@@ -1,0 +1,12 @@
+ALLOWED_HOSTS = "*"
+
+ACCESS_TOKEN_LIFETIME = 30 # days
+REFRESH_TOKEN_LIFETIME = 150 # days
+
+EMAIL_HOST = smtp.gmail.com
+MAIL_PORT = 587  # SMTP server port (587 for TLS, 465 for SSL)
+# EMAIL_USE_TLS = "True"  # True for TLS, False for SSL
+EMAIL_HOST_USER = shahoraiar574@gmail.com  # SMTP server username
+EMAIL_HOST_PASSWORD = ftry fgud komj vanu  # SMTP server password
+# EMAIL_USE_SSL = "False"  # Set to True if using SSL
+DEFAULT_FROM_EMAIL = shahoraiar574@gmail.com  # Default sender email address
