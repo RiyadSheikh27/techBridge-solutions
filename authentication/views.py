@@ -3,9 +3,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.conf import settings
-from apps.user.serializers import *
-from apps.user.models import *
-from apps.user.utils import *
+from .serializers import *
+from .models import *
+from .utils import *
 from rest_framework.permissions import IsAuthenticated, AllowAny
 import random
 from django.core.mail import send_mail

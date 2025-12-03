@@ -1,5 +1,5 @@
 from rest_framework.serializers import ModelSerializer
-from apps.user.models import Users 
+from .models import Users 
 from rest_framework import serializers
 from django.shortcuts import get_object_or_404
 from django.utils import timezone

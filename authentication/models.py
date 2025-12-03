@@ -27,4 +27,3 @@ class Users(AbstractUser):
         if self.otp:
             self.otp_expired = timezone.now() + timedelta(minutes=5)
         return super().save(*args, **kwargs)
-
