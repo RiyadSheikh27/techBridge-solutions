@@ -1,0 +1,42 @@
+On a e-commerce project, i want to do the product add and description part. In future there will add the payment gateways, no need to do the payment part for now. Only do the product add and description part-
+Giving you the model design, dont change anything in model, do the serializer, modelviewset, admin and url part with api doc. In frontend, 
+the product will first filter by product type(hardware or software), then there will come the categories. By categories there will list the 
+subcategories, then under subcategories there will list of product. Each product will contain the details i given.UNder each subcategory there will descriptions of all project and
+Under each project, there may multiple descriptions and row columns as i given in model. There will have one more feature- from product's description user
+ will comma seperated details. From the description i will take all the values and give response in another subjson with name - Overview.
+So the response will be like-
+
+type
+  -category
+     -subcategory
+        -Descriptions
+        -product-1
+            productSubCategory
+            name
+            product type(hardware,software)
+            series
+            image
+            msrp
+            price
+            stock
+            is_in_stock 
+            mfr_part
+            shi_part
+            unspsc
+            manufacturer
+            description
+            details
+            -Overview
+              - List of data which comes from commma seperated description of product
+            -description-1
+               -title
+               -subtitle
+                   -key1
+                   -value1
+                   -key2
+                   -value2
+            -description-2
+        -product-2
+
+
+Write industry level good practice code with proper response which setted globally(success, message, data). And do this as simply and possible
