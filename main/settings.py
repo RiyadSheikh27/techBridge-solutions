@@ -35,6 +35,7 @@ INSTALLED_APPS = [
 
     'authentication',
     'product',
+    'api',
 ]
 
 MIDDLEWARE = [
