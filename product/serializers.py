@@ -132,7 +132,7 @@ class ProductTypeSerializer(serializers.Serializer):
     categories = ProductCategorySerializer(many=True)
 
 
-class ProductCategoryWriteSerializer(serializer.ModelSerializer):
+class ProductCategoryWriteSerializer(serializers.ModelSerializer):
     """Serializer for writing product categories"""
     class Meta:
         model = ProductCategory
