@@ -131,4 +131,69 @@ class ProductTypeSerializer(serializers.Serializer):
     product_type = serializers.CharField()
     categories = ProductCategorySerializer(many=True)
 
+
+class ProductCategoryWriteSerializer(serializer.ModelSerializer):
+    """Serializer for writing product categories"""
+    class Meta:
+        model = ProductCategory
+        fields = ['id', 'name', 'slug', 'is_active', 'display_order']
+        read_only_fields = ['id', 'slug']
+
+class ProductSubCategoryWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating subcategories"""
+    
+    class Meta:
+        model = ProductSubCategory
+        fields = ['id', 'category', 'name', 'is_active', 'display_order']
+        read_only_fields = ['id']
+
+class CategoryDescriptionWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating subcategory descriptions"""
+    
+    class Meta:
+        model = CategoryDescription
+        fields = ['id', 'productSubCategory', 'title', 'description']
+        read_only_fields = ['id']
+
+class ProductWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating products"""
+    
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'subcategory', 'product_type', 'name', 'series',
+            'image', 'msrp', 'price', 'stock', 'is_in_stock',
+            'mfr_part', 'shi_part', 'unspsc', 'manufacturer',
+            'description', 'is_active', 'is_featured', 'display_order'
+        ]
+        read_only_fields = ['id'] 
+
+    def validate(self, data):
+        """Validate price is less than or equal to MSRP"""
+        if data.get('price') and data.get('msrp'):
+            if data['price'] > data['msrp']:
+                raise serializers.ValidationError(
+                    "Price cannot be greater than MSRP"
+                )
+        return data
+
+class ProductDescriptionWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating product descriptions"""
+    
+    class Meta:
+        model = ProductDescription
+        fields = [
+            'id', 'product', 'title', 'subtitle', 
+            'is_active', 'display_order'
+        ]
+        read_only_fields = ['id']
+
+class ProductDescriptionRowWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating description rows"""
+    
+    class Meta:
+        model = ProductDescriptionRow
+        fields = ['id', 'description', 'key', 'value', 'display_order']
+        read_only_fields = ['id']
+
 """ End of Creating Serializer for Product Section """
