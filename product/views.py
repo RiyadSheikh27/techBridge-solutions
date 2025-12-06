@@ -379,11 +379,20 @@ class CategoryDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
     queryset = CategoryDescription.objects.all()
     permission_classes = [AllowAny]
-    
+
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return CategoryDescriptionWriteSerializer
         return CategoryDescriptionSerializer
+
+    def get_queryset(self):
+        queryset = CategoryDescription.objects.all()
+    
+        subcategory_slug = self.request.query_params.get('subcategory', None)
+        if subcategory_slug:
+            queryset = queryset.filter(productSubCategory__slug=subcategory_slug)
+    
+        return queryset
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -407,6 +416,41 @@ class CategoryDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             errors=serializer.errors
         )
 
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data=serializer.data,
+                message="Category description updated successfully"
+            )
+        return self.error_response(
+            message="Validation failed",
+            errors=serializer.errors
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data=serializer.data,
+                message="Category description partially updated successfully"
+            )
+        return self.error_response(
+            message="Validation failed",
+            errors=serializer.errors
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return self.success_response(
+            message="Category description deleted successfully",
+            status_code=204
+        )
 
 class ProductDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
