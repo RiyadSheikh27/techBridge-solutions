@@ -28,7 +28,7 @@ class ProductDescriptionSerializer(serializers.ModelSerializer):
         return ProductDescriptionRowSerializer(rows, many=True).data
     
 class ProductListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for product listing"""
+    """Serializer for product listing"""
     
     class Meta:
         model = Product

@@ -57,7 +57,7 @@ class ProductSubCategory(TimeStampedModel):
     Product subcategories under main categories
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    category = models.ForeignKey(ProductCategory, on_delete=models.CASCADE) 
+    category = models.ForeignKey(ProductCategory, on_delete=models.CASCADE, related_name='productsubcategory') 
     name = models.CharField(max_length=255, blank=True, null=True)
     slug = models.CharField(max_length=255, unique=True, blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -135,7 +135,7 @@ class Product(TimeStampedModel):
     manufacturer = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(help_text="Full product description (comma-separated for overview)")
 
-    is_active = models.BooleanField(default=False, db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
     is_featured = models.BooleanField(default=False, db_index=True)
     display_order = models.PositiveIntegerField(default=0,help_text="Display order")
 
@@ -166,14 +166,11 @@ class Product(TimeStampedModel):
             self.slug = slug
         super().save(*args, **kwargs)
 
-    
-
     def get_overview(self):
         if self.description:
             items = [item.strip() for item in self.description.split(',') if item.strip()]
             return items
         return []
-    
 
     
 class ProductDescription(TimeStampedModel):
