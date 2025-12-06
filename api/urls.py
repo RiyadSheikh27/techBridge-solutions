@@ -10,9 +10,9 @@ router = DefaultRouter()
 router.register(r'products/categories', ProductCategoryViewSet, basename='category')
 router.register(r'products/subcategories', ProductSubCategoryViewSet, basename='subcategory')
 router.register(r'products', ProductViewSet, basename='product')
-router.register(r'products/category-descriptions', CategoryDescriptionViewSet, basename='category-description')
-router.register(r'products/descriptions', ProductDescriptionViewSet, basename='product-description')
-router.register(r'products/description-rows', ProductDescriptionRowViewSet, basename='description-row')
+router.register(r'products-subcategory-descriptions', CategoryDescriptionViewSet, basename='subcategory-description')
+router.register(r'products-descriptions', ProductDescriptionViewSet, basename='product-description')
+router.register(r'products-description-rows', ProductDescriptionRowViewSet, basename='description-row')
 
 
 urlpatterns = [
