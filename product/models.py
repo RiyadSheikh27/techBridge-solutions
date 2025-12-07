@@ -6,6 +6,7 @@ from django.core.validators import MinValueValidator
 from django.utils import timezone
 
 """ Start of Creating Models for Product Section """
+
 class TimeStampedModel(models.Model):
     """Abstract base model with timestamp fields"""
     created_at = models.DateTimeField(auto_now_add=True, blank=True, null=True, db_index=True)
