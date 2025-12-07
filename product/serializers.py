@@ -102,7 +102,6 @@ class ProductSubCategorySerializer(serializers.ModelSerializer):
             is_active=True
         ).order_by('display_order', '-created_at')
         
-        # Use detailed serializer for nested products
         return ProductDetailSerializer(products, many=True).data
     
 class ProductCategorySerializer(serializers.ModelSerializer):

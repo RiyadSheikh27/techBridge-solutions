@@ -376,6 +376,13 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
 class CategoryDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
     ViewSet for Category Descriptions
+
+    list: Get all category descriptions
+    retrieve: Get a single category description
+    create: Create a new category description
+    update: Update a category description
+    partial_update: Partially update a category description
+    destroy: Delete a category description
     """
     queryset = CategoryDescription.objects.all()
     permission_classes = [AllowAny]
@@ -455,6 +462,13 @@ class CategoryDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
 class ProductDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
     ViewSet for Product Descriptions
+
+    list: Get all product descriptions
+    retrieve: Get a single product description
+    create: Create a new product description
+    update: Update a product description
+    partial_update: Partially update a product description
+    destroy: Delete a product description
     """
     queryset = ProductDescription.objects.all()
     permission_classes = [AllowAny]
@@ -538,6 +552,13 @@ class ProductDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
 class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
     ViewSet for Product Description Rows
+
+    list: Get all product description rows
+    retrieve: Get a single product description row
+    create: Create a new product description row
+    update: Update a product description row
+    partial_update: Partially update a product description row
+    destroy: Delete a product description row
     """
     queryset = ProductDescriptionRow.objects.all()
     permission_classes = [AllowAny]
