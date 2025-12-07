@@ -7,6 +7,7 @@ from rest_framework_simplejwt.views import (
 
 urlpatterns = [
     path('registration/', registration, name='registration'),
+    path('verify_registration_otp/', verify_registration_otp, name='verify_registration_otp'),
     path('social_signup_signin/', social_signup_signin, name='social_signup_signin'),
 
     path('login/', login, name='login'),

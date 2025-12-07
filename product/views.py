@@ -13,7 +13,7 @@ class CustomResponseMixin:
     """Custom response mixin for API responses"""
     def success_response(self, data=None, message="Success", status_code=status.HTTP_200_OK):
         return Response({
-            "status": True,
+            "success": True,
             "message": message,
             "data": data
         }, status=status_code)
@@ -94,7 +94,7 @@ class ProductCategoryViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             )
         return self.error_response(
             message="Failed to update category",
-            errors=serializer.errors
+            errors=serializere.rrors
         )
     
     def destroy(self, request, *args, **kwargs):
@@ -496,6 +496,44 @@ class ProductDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             errors=serializer.errors
         )
 
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data = request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data = serializer.data,
+                message = "Product Description Updated Successfully"
+            )
+        return self.error_response(
+            message = "Validation failed",
+            errors = serializer.errors
+        )
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data = serializer.data,
+                message = "Product Description Updated Successfully"
+            )
+        return self.error_response(
+            message = "Validation failed",
+            errors = serializer.errors
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+
+        return self.success_response(
+            message="Category Description Deleted Sucessfully",
+            status_code=204
+        )
+
+
 
 class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
@@ -539,6 +577,34 @@ class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
         return self.error_response(
             message="Validation failed",
             errors=serializer.errors
+        )
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data = serializer.data,
+                message="Product Description Updated Successfully"
+            )
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data = serializer.data,
+                message="Product Description Updated Successfully"
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return self.success_response(
+            status_code=204,
+            message="Product Description Row Deleted Successfully"
         )
 
 """ End of Creating Views for Product Section """
