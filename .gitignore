@@ -11,6 +11,8 @@ myenv/
 # *.env
 # .env/
 
+django-server-key.pem
+
 # Django stuff
 db.sqlite3
 # media/
