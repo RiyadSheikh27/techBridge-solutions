@@ -12,7 +12,7 @@ SECRET_KEY = 'django-insecure-sdo0+4i3@@+%k=&^$$cf6=jvq0^h3zv9oj3267g8seydl_39tn
 
 DEBUG = True
 
-ALLOWED_HOSTS = [os.getenv('ALLOWED_HOSTS')]
+ALLOWED_HOSTS = ["*"]
 
 CORS_ALLOWED_ORIGIN = [
     "http://localhost:5174/",

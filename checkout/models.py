@@ -66,16 +66,15 @@ class CartItem(TimeStampedModel):
         ]
     
     def __str__(self):
-        return f"{self.quantity}x {self.product.name}"
+        return f"{self.quantity} x {self.product.name}"
     
     @property
     def total_price(self):
-        """Calculate total price for this item"""
         return self.price * self.quantity
     
+    
     def save(self, *args, **kwargs):
-        """Set price from product if not set"""
-        if not self.price:
+        if self.price is None or self.price == Decimal("0.00"):
             self.price = self.product.price
         super().save(*args, **kwargs)
 
@@ -99,7 +98,7 @@ class Order(TimeStampedModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order_number = models.CharField(max_length=100, unique=True, db_index=True)
-    user = models.ForeignKey(Users, on_delete=models.CASCADE, null=True, blank=True, unique=True, db_index=True)
+    user = models.ForeignKey(Users, on_delete=models.CASCADE, null=True, blank=True, db_index=True)
     
     first_name = models.CharField(max_length=255,blank=True, null=True)
     last_name = models.CharField(max_length=255,blank=True, null=True)
