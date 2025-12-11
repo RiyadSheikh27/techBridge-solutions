@@ -39,3 +39,47 @@ class CartSerializer(serializers.ModelSerializer):
         model = Cart
         fields = ['id', 'user', 'items', 'subtotal', 'total', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_delivery_charge(self, obj):
+        """Get current delivery charge"""
+        return str(DeliveryCharge.get_current_charge())
+    
+    def get_total(self, obj):
+        """Calculate total with delivery charge"""
+        delivery = DeliveryCharge.get_current_charge()
+        return str(obj.calculate_total(delivery))
+
+class AddToCartSerializer(serializers.Serializer):
+    """Serializer for adding items to cart"""
+    product_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(default=1, min_value=1)
+    
+    def validate_product_id(self, value):
+        """Validate product exists and is available"""
+        try:
+            product = Product.objects.get(id=value)
+            if not product.is_active:
+                raise serializers.ValidationError("Product is not available")
+            if not product.is_in_stock:
+                raise serializers.ValidationError("Product is out of stock")
+            return value
+        except Product.DoesNotExist:
+            raise serializers.ValidationError("Product not found")
+    
+    def validate_quantity(self, value):
+        """Validate quantity"""
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1")
+        return value
+
+
+class UpdateCartItemSerializer(serializers.Serializer):
+    """Serializer for updating cart item quantity"""
+    cart_item_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(min_value=1)
+    
+    def validate_quantity(self, value):
+        """Validate quantity"""
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1")
+        return value

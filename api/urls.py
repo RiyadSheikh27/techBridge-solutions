@@ -5,6 +5,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework import routers
 from django.contrib import admin
 from .swagger import schema_view
+from checkout.views import *
 
 
 router = DefaultRouter()
@@ -16,6 +17,9 @@ router.register(r'products', ProductViewSet, basename='product')
 router.register(r'products-subcategory-descriptions', CategoryDescriptionViewSet, basename='subcategory-description')
 router.register(r'products-descriptions', ProductDescriptionViewSet, basename='product-description')
 router.register(r'products-description-rows', ProductDescriptionRowViewSet, basename='description-row')
+
+""" Registered ViewSets for Checkout Section """
+router.register(r'cart', CartViewSet, basename='cart')
 
 
 urlpatterns = [

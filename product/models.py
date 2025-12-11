@@ -141,7 +141,7 @@ class Product(TimeStampedModel):
     display_order = models.PositiveIntegerField(default=0,help_text="Display order")
 
     def __str__(self):
-        return self.name
+        return f"{self.name} - {self.id}"
     
     class Meta:
         db_table = "products"
