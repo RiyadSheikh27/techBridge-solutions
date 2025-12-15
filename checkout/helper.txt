@@ -1,0 +1,1753 @@
+""" ========================================================""" 
+
+"""
+import uuid
+from django.db import models
+from django.core.validators import MinValueValidator
+from decimal import Decimal
+from products.models import Product, TimeStampedModel
+
+
+class Cart(TimeStampedModel):
+    """Shopping cart for users"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session_id = models.CharField(max_length=255, unique=True, db_index=True)
+    user = models.ForeignKey(
+        'auth.User', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True,
+        related_name='carts'
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    
+    class Meta:
+        db_table = 'carts'
+        verbose_name = 'Cart'
+        verbose_name_plural = 'Carts'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['session_id', 'is_active']),
+            models.Index(fields=['user', 'is_active']),
+        ]
+    
+    def __str__(self):
+        return f"Cart {self.session_id[:8]}"
+    
+    @property
+    def subtotal(self):
+        """Calculate cart subtotal"""
+        return sum(item.total_price for item in self.items.all())
+    
+    @property
+    def total_items(self):
+        """Total number of items in cart"""
+        return sum(item.quantity for item in self.items.all())
+    
+    def calculate_total(self, delivery_charge=Decimal('0.00')):
+        """Calculate cart total with delivery charge"""
+        return self.subtotal + delivery_charge
+
+
+class CartItem(TimeStampedModel):
+    """Individual items in shopping cart"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)]
+    )
+    price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Price at the time of adding to cart"
+    )
+    
+    class Meta:
+        db_table = 'cart_items'
+        verbose_name = 'Cart Item'
+        verbose_name_plural = 'Cart Items'
+        ordering = ['-created_at']
+        unique_together = [['cart', 'product']]
+        indexes = [
+            models.Index(fields=['cart', 'product']),
+        ]
+    
+    def __str__(self):
+        return f"{self.quantity}x {self.product.name}"
+    
+    @property
+    def total_price(self):
+        """Calculate total price for this item"""
+        return self.price * self.quantity
+    
+    def save(self, *args, **kwargs):
+        """Set price from product if not set"""
+        if not self.price:
+            self.price = self.product.price
+        super().save(*args, **kwargs)
+
+
+class Order(TimeStampedModel):
+    """Customer orders"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('failed', 'Failed'),
+        ('refunded', 'Refunded'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order_number = models.CharField(max_length=100, unique=True, db_index=True)
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+    
+    # Customer Information
+    first_name = models.CharField(max_length=255)
+    last_name = models.CharField(max_length=255)
+    company_name = models.CharField(max_length=255, blank=True, null=True)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20)
+    address = models.TextField()
+    
+    # Order Details
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+    delivery_charge = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        default=Decimal('0.00')
+    )
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Status
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True
+    )
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+        db_index=True
+    )
+    
+    # Stripe Payment Details
+    stripe_payment_intent_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True
+    )
+    stripe_charge_id = models.CharField(max_length=255, blank=True, null=True)
+    
+    class Meta:
+        db_table = 'orders'
+        verbose_name = 'Order'
+        verbose_name_plural = 'Orders'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['order_number']),
+            models.Index(fields=['status', 'payment_status']),
+            models.Index(fields=['email']),
+        ]
+    
+    def __str__(self):
+        return f"Order {self.order_number}"
+    
+    def save(self, *args, **kwargs):
+        """Generate order number if not set"""
+        if not self.order_number:
+            import random
+            import string
+            from django.utils import timezone
+            
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            random_str = ''.join(random.choices(string.digits, k=4))
+            self.order_number = f"ORD-{timestamp}-{random_str}"
+        super().save(*args, **kwargs)
+    
+    @property
+    def full_name(self):
+        """Get customer full name"""
+        return f"{self.first_name} {self.last_name}"
+
+
+class OrderItem(TimeStampedModel):
+    """Items in an order"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
+    product_name = models.CharField(max_length=510)
+    product_type = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    class Meta:
+        db_table = 'order_items'
+        verbose_name = 'Order Item'
+        verbose_name_plural = 'Order Items'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['order', 'product']),
+        ]
+    
+    def __str__(self):
+        return f"{self.quantity}x {self.product_name}"
+    
+    def save(self, *args, **kwargs):
+        """Calculate total if not set"""
+        if not self.total:
+            self.total = self.price * self.quantity
+        if not self.product_name and self.product:
+            self.product_name = self.product.name
+        if not self.product_type and self.product:
+            self.product_type = self.product.product_type
+        super().save(*args, **kwargs)
+
+
+class DeliveryCharge(TimeStampedModel):
+    """Global delivery charge settings"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('10.00'),
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        db_table = 'delivery_charges'
+        verbose_name = 'Delivery Charge'
+        verbose_name_plural = 'Delivery Charges'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"${self.amount}"
+    
+    @classmethod
+    def get_current_charge(cls):
+        """Get current active delivery charge"""
+        charge = cls.objects.filter(is_active=True).first()
+        return charge.amount if charge else Decimal('10.00')
+
+""" ========================================================""" 
+from rest_framework import serializers
+from decimal import Decimal
+from .models import Cart, CartItem, Order, OrderItem, DeliveryCharge
+from products.models import Product
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    """Serializer for cart items with product details"""
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_image = serializers.ImageField(source='product.image', read_only=True)
+    product_slug = serializers.CharField(source='product.slug', read_only=True)
+    total_price = serializers.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        read_only=True
+    )
+    
+    class Meta:
+        model = CartItem
+        fields = [
+            'id', 'product', 'product_name', 'product_image', 
+            'product_slug', 'quantity', 'price', 'total_price',
+            'created_at'
+        ]
+        read_only_fields = ['id', 'price', 'created_at']
+    
+    def validate_quantity(self, value):
+        """Validate quantity against stock"""
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1")
+        return value
+    
+    def validate_product(self, value):
+        """Validate product availability"""
+        if not value.is_active:
+            raise serializers.ValidationError("This product is not available")
+        if not value.is_in_stock:
+            raise serializers.ValidationError("This product is out of stock")
+        return value
+
+
+class CartSerializer(serializers.ModelSerializer):
+    """Serializer for shopping cart with all items"""
+    items = CartItemSerializer(many=True, read_only=True)
+    subtotal = serializers.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        read_only=True
+    )
+    delivery_charge = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
+    total_items = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = Cart
+        fields = [
+            'id', 'session_id', 'items', 'subtotal', 
+            'delivery_charge', 'total', 'total_items',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'session_id', 'created_at', 'updated_at']
+    
+    def get_delivery_charge(self, obj):
+        """Get current delivery charge"""
+        return str(DeliveryCharge.get_current_charge())
+    
+    def get_total(self, obj):
+        """Calculate total with delivery charge"""
+        delivery = DeliveryCharge.get_current_charge()
+        return str(obj.calculate_total(delivery))
+
+
+class AddToCartSerializer(serializers.Serializer):
+    """Serializer for adding items to cart"""
+    product_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(default=1, min_value=1)
+    
+    def validate_product_id(self, value):
+        """Validate product exists and is available"""
+        try:
+            product = Product.objects.get(id=value)
+            if not product.is_active:
+                raise serializers.ValidationError("Product is not available")
+            if not product.is_in_stock:
+                raise serializers.ValidationError("Product is out of stock")
+            return value
+        except Product.DoesNotExist:
+            raise serializers.ValidationError("Product not found")
+    
+    def validate_quantity(self, value):
+        """Validate quantity"""
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1")
+        return value
+
+
+class UpdateCartItemSerializer(serializers.Serializer):
+    """Serializer for updating cart item quantity"""
+    quantity = serializers.IntegerField(min_value=1)
+    
+    def validate_quantity(self, value):
+        """Validate quantity"""
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1")
+        return value
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    """Serializer for order items"""
+    
+    class Meta:
+        model = OrderItem
+        fields = [
+            'id', 'product_name', 'product_type', 
+            'quantity', 'price', 'total'
+        ]
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    """Serializer for orders with items"""
+    items = OrderItemSerializer(many=True, read_only=True)
+    full_name = serializers.CharField(read_only=True)
+    
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'order_number', 'first_name', 'last_name',
+            'full_name', 'company_name', 'email', 'phone', 
+            'address', 'subtotal', 'delivery_charge', 'total',
+            'status', 'payment_status', 'items',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'order_number', 'status', 'payment_status',
+            'created_at', 'updated_at'
+        ]
+
+
+class CheckoutSerializer(serializers.Serializer):
+    """Serializer for checkout process"""
+    first_name = serializers.CharField(max_length=255)
+    last_name = serializers.CharField(max_length=255)
+    company_name = serializers.CharField(
+        max_length=255, 
+        required=False, 
+        allow_blank=True
+    )
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20)
+    address = serializers.CharField()
+    
+    def validate_email(self, value):
+        """Validate email format"""
+        return value.lower()
+    
+    def validate_phone(self, value):
+        """Validate phone number"""
+        # Remove spaces and special characters
+        cleaned = ''.join(filter(str.isdigit, value))
+        if len(cleaned) < 10:
+            raise serializers.ValidationError(
+                "Phone number must be at least 10 digits"
+            )
+        return value
+
+
+class PaymentIntentSerializer(serializers.Serializer):
+    """Serializer for Stripe payment intent response"""
+    client_secret = serializers.CharField()
+    payment_intent_id = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    currency = serializers.CharField(default='usd')
+
+
+class DeliveryChargeSerializer(serializers.ModelSerializer):
+    """Serializer for delivery charge"""
+    
+    class Meta:
+        model = DeliveryCharge
+        fields = ['id', 'amount', 'is_active', 'created_at']
+        read_only_fields = ['id', 'created_at']
+""" ========================================================""" 
+import stripe
+from django.conf import settings
+from django.db import transaction
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from decimal import Decimal
+
+from .models import Cart, CartItem, Order, OrderItem, DeliveryCharge
+from .serializers import (
+    CartSerializer, CartItemSerializer, AddToCartSerializer,
+    UpdateCartItemSerializer, OrderSerializer, CheckoutSerializer,
+    PaymentIntentSerializer, DeliveryChargeSerializer
+)
+from products.models import Product
+
+# Initialize Stripe
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+class CustomResponseMixin:
+    """Custom response mixin for API responses"""
+    
+    def success_response(self, data=None, message="Success", status_code=status.HTTP_200_OK):
+        return Response({
+            "success": True,
+            "message": message,
+            "data": data
+        }, status=status_code)
+
+    def error_response(self, message="Error occurred", errors=None, status_code=status.HTTP_400_BAD_REQUEST):
+        response_data = {
+            'success': False,
+            'message': message,
+            'data': None
+        }
+        if errors:
+            response_data['errors'] = errors
+        return Response(response_data, status=status_code)
+
+
+class CartViewSet(CustomResponseMixin, viewsets.ViewSet):
+    """
+    ViewSet for shopping cart operations
+    
+    list: Get current cart with all items
+    add_item: Add product to cart
+    update_item: Update item quantity
+    remove_item: Remove item from cart
+    clear: Clear entire cart
+    """
+    permission_classes = [AllowAny]
+    
+    def get_or_create_cart(self, request):
+        """Get or create cart based on session"""
+        session_id = request.session.session_key
+        
+        # Create session if doesn't exist
+        if not session_id:
+            request.session.create()
+            session_id = request.session.session_key
+        
+        # Get or create cart
+        cart, created = Cart.objects.get_or_create(
+            session_id=session_id,
+            is_active=True,
+            defaults={'user': request.user if request.user.is_authenticated else None}
+        )
+        
+        return cart
+    
+    def list(self, request):
+        """Get current cart"""
+        cart = self.get_or_create_cart(request)
+        serializer = CartSerializer(cart)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Cart retrieved successfully"
+        )
+    
+    @action(detail=False, methods=['post'])
+    def add_item(self, request):
+        """Add item to cart"""
+        serializer = AddToCartSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                errors=serializer.errors
+            )
+        
+        product_id = serializer.validated_data['product_id']
+        quantity = serializer.validated_data['quantity']
+        
+        try:
+            product = Product.objects.get(id=product_id)
+            cart = self.get_or_create_cart(request)
+            
+            # Check if item already in cart
+            cart_item, created = CartItem.objects.get_or_create(
+                cart=cart,
+                product=product,
+                defaults={
+                    'quantity': quantity,
+                    'price': product.price
+                }
+            )
+            
+            if not created:
+                # Update quantity if already exists
+                cart_item.quantity += quantity
+                cart_item.save()
+            
+            cart_serializer = CartSerializer(cart)
+            
+            return self.success_response(
+                data=cart_serializer.data,
+                message=f"{product.name} added to cart successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+            
+        except Product.DoesNotExist:
+            return self.error_response(
+                message="Product not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to add item to cart: {str(e)}"
+            )
+    
+    @action(detail=False, methods=['patch'], url_path='update-item/(?P<item_id>[^/.]+)')
+    def update_item(self, request, item_id=None):
+        """Update cart item quantity"""
+        serializer = UpdateCartItemSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                errors=serializer.errors
+            )
+        
+        try:
+            cart = self.get_or_create_cart(request)
+            cart_item = CartItem.objects.get(id=item_id, cart=cart)
+            
+            cart_item.quantity = serializer.validated_data['quantity']
+            cart_item.save()
+            
+            cart_serializer = CartSerializer(cart)
+            
+            return self.success_response(
+                data=cart_serializer.data,
+                message="Cart item updated successfully"
+            )
+            
+        except CartItem.DoesNotExist:
+            return self.error_response(
+                message="Cart item not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to update cart item: {str(e)}"
+            )
+    
+    @action(detail=False, methods=['delete'], url_path='remove-item/(?P<item_id>[^/.]+)')
+    def remove_item(self, request, item_id=None):
+        """Remove item from cart"""
+        try:
+            cart = self.get_or_create_cart(request)
+            cart_item = CartItem.objects.get(id=item_id, cart=cart)
+            
+            product_name = cart_item.product.name
+            cart_item.delete()
+            
+            cart_serializer = CartSerializer(cart)
+            
+            return self.success_response(
+                data=cart_serializer.data,
+                message=f"{product_name} removed from cart"
+            )
+            
+        except CartItem.DoesNotExist:
+            return self.error_response(
+                message="Cart item not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to remove item: {str(e)}"
+            )
+    
+    @action(detail=False, methods=['post'])
+    def clear(self, request):
+        """Clear entire cart"""
+        try:
+            cart = self.get_or_create_cart(request)
+            cart.items.all().delete()
+            
+            cart_serializer = CartSerializer(cart)
+            
+            return self.success_response(
+                data=cart_serializer.data,
+                message="Cart cleared successfully"
+            )
+            
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to clear cart: {str(e)}"
+            )
+
+
+class OrderViewSet(CustomResponseMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for orders (read-only)
+    
+    list: Get all orders
+    retrieve: Get single order details
+    """
+    serializer_class = OrderSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'order_number'
+    
+    def get_queryset(self):
+        """Get orders, optionally filtered by email"""
+        email = self.request.query_params.get('email', None)
+        queryset = Order.objects.prefetch_related('items').all()
+        
+        if email:
+            queryset = queryset.filter(email=email.lower())
+        
+        return queryset.order_by('-created_at')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Orders retrieved successfully"
+        )
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Order retrieved successfully"
+        )
+
+
+class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
+    """
+    ViewSet for checkout and payment operations
+    
+    create_payment_intent: Create Stripe payment intent
+    confirm_payment: Confirm payment and create order
+    """
+    permission_classes = [AllowAny]
+    
+    def get_cart(self, request):
+        """Get current cart"""
+        session_id = request.session.session_key
+        if not session_id:
+            return None
+        
+        try:
+            return Cart.objects.get(session_id=session_id, is_active=True)
+        except Cart.DoesNotExist:
+            return None
+    
+    @action(detail=False, methods=['post'])
+    def create_payment_intent(self, request):
+        """Create Stripe payment intent"""
+        # Validate checkout data
+        checkout_serializer = CheckoutSerializer(data=request.data)
+        if not checkout_serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                errors=checkout_serializer.errors
+            )
+        
+        # Get cart
+        cart = self.get_cart(request)
+        if not cart or not cart.items.exists():
+            return self.error_response(
+                message="Cart is empty",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Calculate total
+            delivery_charge = DeliveryCharge.get_current_charge()
+            total = cart.calculate_total(delivery_charge)
+            
+            # Create Stripe payment intent
+            intent = stripe.PaymentIntent.create(
+                amount=int(total * 100),  # Stripe expects amount in cents
+                currency='usd',
+                metadata={
+                    'cart_id': str(cart.id),
+                    'email': checkout_serializer.validated_data['email']
+                }
+            )
+            
+            # Prepare response
+            payment_data = {
+                'client_secret': intent.client_secret,
+                'payment_intent_id': intent.id,
+                'amount': str(total),
+                'currency': 'usd'
+            }
+            
+            return self.success_response(
+                data=payment_data,
+                message="Payment intent created successfully"
+            )
+            
+        except stripe.error.StripeError as e:
+            return self.error_response(
+                message=f"Stripe error: {str(e)}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to create payment intent: {str(e)}"
+            )
+    
+    @action(detail=False, methods=['post'])
+    def confirm_payment(self, request):
+        """Confirm payment and create order"""
+        payment_intent_id = request.data.get('payment_intent_id')
+        checkout_data = request.data.get('checkout_data')
+        
+        if not payment_intent_id or not checkout_data:
+            return self.error_response(
+                message="Payment intent ID and checkout data are required"
+            )
+        
+        # Validate checkout data
+        checkout_serializer = CheckoutSerializer(data=checkout_data)
+        if not checkout_serializer.is_valid():
+            return self.error_response(
+                message="Invalid checkout data",
+                errors=checkout_serializer.errors
+            )
+        
+        # Get cart
+        cart = self.get_cart(request)
+        if not cart or not cart.items.exists():
+            return self.error_response(
+                message="Cart is empty",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Verify payment with Stripe
+            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if intent.status != 'succeeded':
+                return self.error_response(
+                    message="Payment not completed",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create order with transaction
+            with transaction.atomic():
+                delivery_charge = DeliveryCharge.get_current_charge()
+                subtotal = cart.subtotal
+                total = cart.calculate_total(delivery_charge)
+                
+                # Create order
+                order = Order.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    first_name=checkout_serializer.validated_data['first_name'],
+                    last_name=checkout_serializer.validated_data['last_name'],
+                    company_name=checkout_serializer.validated_data.get('company_name', ''),
+                    email=checkout_serializer.validated_data['email'],
+                    phone=checkout_serializer.validated_data['phone'],
+                    address=checkout_serializer.validated_data['address'],
+                    subtotal=subtotal,
+                    delivery_charge=delivery_charge,
+                    total=total,
+                    status='processing',
+                    payment_status='paid',
+                    stripe_payment_intent_id=payment_intent_id,
+                    stripe_charge_id=intent.charges.data[0].id if intent.charges.data else None
+                )
+                
+                # Create order items
+                for cart_item in cart.items.all():
+                    OrderItem.objects.create(
+                        order=order,
+                        product=cart_item.product,
+                        product_name=cart_item.product.name,
+                        product_type=cart_item.product.product_type,
+                        quantity=cart_item.quantity,
+                        price=cart_item.price,
+                        total=cart_item.total_price
+                    )
+                
+                # Clear cart
+                cart.items.all().delete()
+                cart.is_active = False
+                cart.save()
+            
+            # Serialize and return order
+            order_serializer = OrderSerializer(order)
+            
+            return self.success_response(
+                data=order_serializer.data,
+                message="Order created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+            
+        except stripe.error.StripeError as e:
+            return self.error_response(
+                message=f"Stripe error: {str(e)}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to create order: {str(e)}"
+            )
+
+
+class DeliveryChargeViewSet(CustomResponseMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for delivery charges (read-only for customers)
+    
+    list: Get all delivery charges
+    current: Get current active delivery charge
+    """
+    queryset = DeliveryCharge.objects.all()
+    serializer_class = DeliveryChargeSerializer
+    permission_classes = [AllowAny]
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Delivery charges retrieved successfully"
+        )
+    
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """Get current active delivery charge"""
+        charge = DeliveryCharge.get_current_charge()
+        
+        return self.success_response(
+            data={'amount': str(charge)},
+            message="Current delivery charge retrieved successfully"
+        )
+""" ========================================================""" 
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    CartViewSet, OrderViewSet, CheckoutViewSet, DeliveryChargeViewSet
+)
+
+# Create router
+router = DefaultRouter()
+
+# Register viewsets
+router.register(r'orders', OrderViewSet, basename='order')
+router.register(r'delivery-charges', DeliveryChargeViewSet, basename='delivery-charge')
+
+app_name = 'cart'
+
+urlpatterns = [
+    # Cart endpoints (using ViewSet actions)
+    path('cart/', CartViewSet.as_view({'get': 'list'}), name='cart-list'),
+    path('cart/add-item/', CartViewSet.as_view({'post': 'add_item'}), name='cart-add-item'),
+    path('cart/update-item/<uuid:item_id>/', CartViewSet.as_view({'patch': 'update_item'}), name='cart-update-item'),
+    path('cart/remove-item/<uuid:item_id>/', CartViewSet.as_view({'delete': 'remove_item'}), name='cart-remove-item'),
+    path('cart/clear/', CartViewSet.as_view({'post': 'clear'}), name='cart-clear'),
+    
+    # Checkout endpoints
+    path('checkout/create-payment-intent/', CheckoutViewSet.as_view({'post': 'create_payment_intent'}), name='create-payment-intent'),
+    path('checkout/confirm-payment/', CheckoutViewSet.as_view({'post': 'confirm_payment'}), name='confirm-payment'),
+    
+    # Other routes from router
+    path('', include(router.urls)),
+]
+""" ========================================================""" 
+# Add these to your Django settings.py
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',  # Required for cart sessions
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    
+    # Third-party apps
+    'rest_framework',
+    'corsheaders',
+    
+    # Your apps
+    'products',
+    'cart',  # Add cart app
+]
+
+# Session Configuration (for cart management)
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_NAME = 'ecommerce_session'
+SESSION_COOKIE_AGE = 1209600  # 2 weeks in seconds
+SESSION_SAVE_EVERY_REQUEST = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# Stripe Configuration
+# Get your keys from: https://dashboard.stripe.com/apikeys
+STRIPE_PUBLISHABLE_KEY = 'pk_test_your_publishable_key_here'  # From environment variable
+STRIPE_SECRET_KEY = 'sk_test_your_secret_key_here'  # From environment variable
+
+# For production, use environment variables:
+# STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
+# STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
+
+# CORS Configuration (update to include your frontend URL)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+
+# Allow credentials (required for sessions to work with CORS)
+CORS_ALLOW_CREDENTIALS = True
+
+# REST Framework Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 100,
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',  # Changed to AllowAny for cart
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.MultiPartParser',
+        'rest_framework.parsers.FormParser',
+    ],
+}
+
+# Email Configuration (for order confirmation emails - optional)
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'smtp.gmail.com'
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
+# EMAIL_HOST_USER = 'your-email@gmail.com'
+# EMAIL_HOST_PASSWORD = 'your-app-password'
+# DEFAULT_FROM_EMAIL = 'your-email@gmail.com'
+""" ========================================================""" 
+# Django>=4.2,<5.0
+# djangorestframework>=3.14.0
+# Pillow>=10.0.0
+# python-decouple>=3.8
+# django-cors-headers>=4.3.0
+# stripe>=7.0.0
+""" ========================================================""" 
+
+# Cart & Payment API Documentation
+
+## Overview
+This API provides complete shopping cart and payment functionality using Stripe. It supports session-based cart management, checkout process, and order creation.
+
+## Base URL
+```
+/api/cart/
+```
+
+## Standard Response Format
+
+### Success Response
+```json
+{
+  "success": true,
+  "message": "Success message",
+  "data": {
+    // Response data
+  }
+}
+```
+
+### Error Response
+```json
+{
+  "success": false,
+  "message": "Error message",
+  "data": null,
+  "errors": {
+    // Validation errors
+  }
+}
+```
+
+---
+
+## Shopping Cart Endpoints
+
+### 1. Get Current Cart
+```http
+GET /api/cart/cart/
+```
+
+**Description:** Get the current shopping cart with all items
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Cart retrieved successfully",
+  "data": {
+    "id": "uuid",
+    "session_id": "session-key",
+    "items": [
+      {
+        "id": "uuid",
+        "product": "product-uuid",
+        "product_name": "Dell XPS 15",
+        "product_image": "/media/products/dell-xps.jpg",
+        "product_slug": "dell-xps-15",
+        "quantity": 2,
+        "price": "1799.99",
+        "total_price": "3599.98",
+        "created_at": "2024-01-15T10:30:00Z"
+      }
+    ],
+    "subtotal": "3599.98",
+    "delivery_charge": "10.00",
+    "total": "3609.98",
+    "total_items": 2,
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:35:00Z"
+  }
+}
+```
+
+### 2. Add Item to Cart
+```http
+POST /api/cart/cart/add-item/
+```
+
+**Request Body:**
+```json
+{
+  "product_id": "product-uuid",
+  "quantity": 2
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Dell XPS 15 added to cart successfully",
+  "data": {
+    // Full cart data (same as Get Cart response)
+  }
+}
+```
+
+**Validation:**
+- Product must exist and be active
+- Product must be in stock
+- Quantity must be at least 1
+
+### 3. Update Cart Item Quantity
+```http
+PATCH /api/cart/cart/update-item/{item_id}/
+```
+
+**Request Body:**
+```json
+{
+  "quantity": 5
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Cart item updated successfully",
+  "data": {
+    // Full cart data
+  }
+}
+```
+
+### 4. Remove Item from Cart
+```http
+DELETE /api/cart/cart/remove_item/{item_id}/
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Dell XPS 15 removed from cart",
+  "data": {
+    // Full cart data
+  }
+}
+```
+
+### 5. Clear Cart
+```http
+POST /api/cart/cart/clear/
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Cart cleared successfully",
+  "data": {
+    // Empty cart data
+  }
+}
+```
+
+---
+
+## Checkout & Payment Endpoints
+
+### 1. Create Payment Intent
+```http
+POST /api/cart/checkout/create-payment-intent/
+```
+
+**Description:** Create a Stripe payment intent before payment
+
+**Request Body:**
+```json
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "company_name": "Acme Corp",
+  "email": "john@example.com",
+  "phone": "+1234567890",
+  "address": "123 Main St, City, State 12345"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Payment intent created successfully",
+  "data": {
+    "client_secret": "pi_xxx_secret_xxx",
+    "payment_intent_id": "pi_xxx",
+    "amount": "3609.98",
+    "currency": "usd"
+  }
+}
+```
+
+**Error Responses:**
+- Cart is empty: 400
+- Invalid checkout data: 400
+- Stripe error: 400
+
+### 2. Confirm Payment & Create Order
+```http
+POST /api/cart/checkout/confirm-payment/
+```
+
+**Description:** Confirm payment and create order after successful Stripe payment
+
+**Request Body:**
+```json
+{
+  "payment_intent_id": "pi_xxx",
+  "checkout_data": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "company_name": "Acme Corp",
+    "email": "john@example.com",
+    "phone": "+1234567890",
+    "address": "123 Main St, City, State 12345"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Order created successfully",
+  "data": {
+    "id": "uuid",
+    "order_number": "ORD-20240115103000-1234",
+    "first_name": "John",
+    "last_name": "Doe",
+    "full_name": "John Doe",
+    "company_name": "Acme Corp",
+    "email": "john@example.com",
+    "phone": "+1234567890",
+    "address": "123 Main St, City, State 12345",
+    "subtotal": "3599.98",
+    "delivery_charge": "10.00",
+    "total": "3609.98",
+    "status": "processing",
+    "payment_status": "paid",
+    "items": [
+      {
+        "id": "uuid",
+        "product_name": "Dell XPS 15",
+        "product_type": "hardware",
+        "quantity": 2,
+        "price": "1799.99",
+        "total": "3599.98"
+      }
+    ],
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+**Note:** This endpoint verifies the payment with Stripe before creating the order. Cart is automatically cleared after successful order creation.
+
+---
+
+## Order Endpoints
+
+### 1. List All Orders
+```http
+GET /api/cart/orders/
+```
+
+**Query Parameters:**
+- `email` (string, optional): Filter orders by customer email
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "data": [
+    {
+      "id": "uuid",
+      "order_number": "ORD-20240115103000-1234",
+      "first_name": "John",
+      "last_name": "Doe",
+      "full_name": "John Doe",
+      "company_name": "Acme Corp",
+      "email": "john@example.com",
+      "phone": "+1234567890",
+      "address": "123 Main St, City, State 12345",
+      "subtotal": "3599.98",
+      "delivery_charge": "10.00",
+      "total": "3609.98",
+      "status": "processing",
+      "payment_status": "paid",
+      "items": [...],
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+### 2. Get Single Order
+```http
+GET /api/cart/orders/{order_number}/
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Order retrieved successfully",
+  "data": {
+    // Full order data (same as list)
+  }
+}
+```
+
+### 3. Get Orders by Email
+```http
+GET /api/cart/orders/?email=john@example.com
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "data": [
+    // Array of orders for this email
+  ]
+}
+```
+
+---
+
+## Delivery Charge Endpoints
+
+### 1. Get Current Delivery Charge
+```http
+GET /api/cart/delivery-charges/current/
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Current delivery charge retrieved successfully",
+  "data": {
+    "amount": "10.00"
+  }
+}
+```
+
+### 2. List All Delivery Charges
+```http
+GET /api/cart/delivery-charges/
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Delivery charges retrieved successfully",
+  "data": [
+    {
+      "id": "uuid",
+      "amount": "10.00",
+      "is_active": true,
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Complete Workflow
+
+### Frontend Cart & Checkout Flow
+
+```javascript
+// 1. Add product to cart
+const addToCart = async (productId, quantity = 1) => {
+  const response = await fetch('/api/cart/cart/add-item/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include', // Important for session
+    body: JSON.stringify({ product_id: productId, quantity })
+  });
+  
+  const data = await response.json();
+  if (data.success) {
+    console.log('Cart:', data.data);
+  }
+};
+
+// 2. Get current cart
+const getCart = async () => {
+  const response = await fetch('/api/cart/cart/', {
+    credentials: 'include'
+  });
+  
+  const data = await response.json();
+  if (data.success) {
+    console.log('Cart total:', data.data.total);
+    console.log('Items:', data.data.items);
+  }
+};
+
+// 3. Update item quantity
+const updateQuantity = async (itemId, quantity) => {
+  const response = await fetch(`/api/cart/cart/update-item/${itemId}/`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ quantity })
+  });
+  
+  const data = await response.json();
+  return data;
+};
+
+// 4. Remove item
+const removeItem = async (itemId) => {
+  const response = await fetch(`/api/cart/cart/remove-item/${itemId}/`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  
+  const data = await response.json();
+  return data;
+};
+```
+
+### Checkout & Payment Flow with Stripe
+
+```javascript
+import { loadStripe } from '@stripe/stripe-js';
+
+// Initialize Stripe
+const stripePromise = loadStripe('pk_test_your_publishable_key');
+
+// Complete checkout flow
+const checkout = async (checkoutData) => {
+  try {
+    // 1. Create payment intent
+    const intentResponse = await fetch('/api/cart/checkout/create-payment-intent/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(checkoutData)
+    });
+    
+    const intentData = await intentResponse.json();
+    
+    if (!intentData.success) {
+      throw new Error(intentData.message);
+    }
+    
+    // 2. Confirm payment with Stripe
+    const stripe = await stripePromise;
+    const { client_secret, payment_intent_id } = intentData.data;
+    
+    const { error, paymentIntent } = await stripe.confirmCardPayment(
+      client_secret,
+      {
+        payment_method: {
+          card: cardElement, // Your Stripe card element
+          billing_details: {
+            name: `${checkoutData.first_name} ${checkoutData.last_name}`,
+            email: checkoutData.email,
+            phone: checkoutData.phone,
+            address: {
+              line1: checkoutData.address
+            }
+          }
+        }
+      }
+    );
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    // 3. Confirm payment and create order in backend
+    const orderResponse = await fetch('/api/cart/checkout/confirm-payment/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        payment_intent_id: paymentIntent.id,
+        checkout_data: checkoutData
+      })
+    });
+    
+    const orderData = await orderResponse.json();
+    
+    if (orderData.success) {
+      // Order created successfully
+      console.log('Order Number:', orderData.data.order_number);
+      // Redirect to order confirmation page
+      window.location.href = `/order-confirmation/${orderData.data.order_number}`;
+    }
+    
+  } catch (error) {
+    console.error('Checkout error:', error);
+  }
+};
+
+// Usage
+const checkoutData = {
+  first_name: 'John',
+  last_name: 'Doe',
+  company_name: 'Acme Corp',
+  email: 'john@example.com',
+  phone: '+1234567890',
+  address: '123 Main St, City, State 12345'
+};
+
+checkout(checkoutData);
+```
+
+---
+
+## Order Status Values
+
+### Order Status
+- `pending` - Order received, awaiting processing
+- `processing` - Order is being processed
+- `completed` - Order completed and delivered
+- `failed` - Order failed
+- `cancelled` - Order cancelled
+
+### Payment Status
+- `pending` - Payment not yet completed
+- `paid` - Payment successful
+- `failed` - Payment failed
+- `refunded` - Payment refunded
+
+---
+
+## Important Notes
+
+### Session Management
+- Cart uses Django sessions
+- Always include `credentials: 'include'` in fetch requests
+- Sessions expire after 2 weeks by default
+- Each session has a unique cart
+
+### Payment Security
+- Never expose your Stripe secret key in frontend
+- Always validate payment on backend before creating order
+- Payment intent is verified with Stripe before order creation
+- Cart is cleared only after successful order creation
+
+### Error Handling
+- Always check `success` field in response
+- Handle both validation errors and Stripe errors
+- Show user-friendly error messages
+- Log errors for debugging
+
+### Testing with Stripe
+Use Stripe test cards:
+- Success: `4242 4242 4242 4242`
+- Decline: `4000 0000 0000 0002`
+- 3D Secure: `4000 0027 6000 3184`
+- Any future expiry date and CVC
+
+---
+
+## Example React Implementation
+
+```jsx
+import React, { useState, useEffect } from 'react';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+const stripePromise = loadStripe('pk_test_your_key');
+
+function CheckoutForm() {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [cart, setCart] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    company_name: '',
+    email: '',
+    phone: '',
+    address: ''
+  });
+
+  useEffect(() => {
+    fetchCart();
+  }, []);
+
+  const fetchCart = async () => {
+    const response = await fetch('/api/cart/cart/', {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    if (data.success) {
+      setCart(data.data);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      // Create payment intent
+      const intentResponse = await fetch('/api/cart/checkout/create-payment-intent/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formData)
+      });
+
+      const intentData = await intentResponse.json();
+
+      // Confirm payment
+      const { error, paymentIntent } = await stripe.confirmCardPayment(
+        intentData.data.client_secret,
+        {
+          payment_method: {
+            card: elements.getElement(CardElement),
+            billing_details: {
+              name: `${formData.first_name} ${formData.last_name}`,
+              email: formData.email
+            }
+          }
+        }
+      );
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      // Create order
+      const orderResponse = await fetch('/api/cart/checkout/confirm-payment/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          payment_intent_id: paymentIntent.id,
+          checkout_data: formData
+        })
+      });
+
+      const orderData = await orderResponse.json();
+
+      if (orderData.success) {
+        alert(`Order created! Order #${orderData.data.order_number}`);
+        window.location.href = '/order-confirmation';
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Checkout failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        placeholder="First Name"
+        value={formData.first_name}
+        onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+        required
+      />
+      <input
+        placeholder="Last Name"
+        value={formData.last_name}
+        onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+        required
+      />
+      <input
+        type="email"
+        placeholder="Email"
+        value={formData.email}
+        onChange={(e) => setFormData({...formData, email: e.target.value})}
+        required
+      />
+      <input
+        placeholder="Phone"
+        value={formData.phone}
+        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+        required
+      />
+      <textarea
+        placeholder="Address"
+        value={formData.address}
+        onChange={(e) => setFormData({...formData, address: e.target.value})}
+        required
+      />
+      
+      <CardElement />
+      
+      <div>Total: ${cart?.total}</div>
+      
+      <button type="submit" disabled={!stripe || loading}>
+        {loading ? 'Processing...' : 'Pay Now'}
+      </button>
+    </form>
+  );
+}
+
+function App() {
+  return (
+    <Elements stripe={stripePromise}>
+      <CheckoutForm />
+    </Elements>
+  );
+}
+
+export default App;
+```
+
+---
+
+## Admin Panel Features
+
+Access admin at `/admin/`:
+
+1. **Carts**: View all active carts with items
+2. **Orders**: Manage orders, view details, update status
+3. **Order Items**: View all order items
+4. **Delivery Charges**: Configure delivery charges
+
+---
+
+## Support & Documentation
+
+For more information:
+- [Stripe Documentation](https://stripe.com/docs)
+- [Django Sessions](https://docs.djangoproject.com/en/stable/topics/http/sessions/)
+- [DRF Documentation](https://www.django-rest-framework.org/)
+""" ========================================================""" 
+"""

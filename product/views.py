@@ -4,7 +4,7 @@ from .models import *
 from .serializers import *
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
 
 """ Start of Creating Views for Product Section """
@@ -40,7 +40,7 @@ class ProductCategoryViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a category
     """
     queryset = ProductCategory.objects.filter(is_active=True)
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
     def get_serializer_class(self):
@@ -117,7 +117,7 @@ class ProductSubCategoryViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     by_category: Get subcategories filtered by category slug
     """
     queryset = ProductSubCategory.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
     def get_serializer_class(self):
@@ -207,7 +207,7 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     featured: Get featured products
     """
     queryset = Product.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
     def get_serializer_class(self):
@@ -385,7 +385,7 @@ class CategoryDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a category description
     """
     queryset = CategoryDescription.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -471,7 +471,7 @@ class ProductDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a product description
     """
     queryset = ProductDescription.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -561,7 +561,7 @@ class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a product description row
     """
     queryset = ProductDescriptionRow.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
