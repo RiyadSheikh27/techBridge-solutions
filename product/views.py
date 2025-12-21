@@ -4,7 +4,7 @@ from .models import *
 from .serializers import *
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
 
 """ Start of Creating Views for Product Section """
@@ -40,7 +40,7 @@ class ProductCategoryViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a category
     """
     queryset = ProductCategory.objects.filter(is_active=True)
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
     def get_serializer_class(self):
@@ -54,6 +54,10 @@ class ProductCategoryViewSet(CustomResponseMixin, viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active', None)
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
+
+        product_type = self.request.query_params.get('product_type', None)
+        if product_type:
+            queryset = queryset.filter(product_type=product_type)
         
         return queryset.order_by('display_order', 'name')
 
@@ -117,7 +121,7 @@ class ProductSubCategoryViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     by_category: Get subcategories filtered by category slug
     """
     queryset = ProductSubCategory.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
     def get_serializer_class(self):
@@ -207,15 +211,16 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     featured: Get featured products
     """
     queryset = Product.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = 'slug'
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return ProductWriteSerializer
         elif self.action == 'list':
-            return ProductListSerializer
-        return ProductDetailSerializer
+            return ProductDetailSerializer
+            # return ProductListSerializer
+        return ProductListSerializer
 
     def get_queryset(self):
         queryset = Product.objects.select_related(
@@ -225,10 +230,10 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             'productdescription_set',
             'productdescription_set__productdescriptionrow_set'
         )
-        """Filter by product type"""
-        product_type = self.request.query_params.get('type', None)
-        if product_type:
-            queryset = queryset.filter(product_type=product_type)
+        # """Filter by product type"""
+        # product_type = self.request.query_params.get('type', None)
+        # if product_type:
+        #     queryset = queryset.filter(product_type=product_type)
         
         """Filter by subcategory"""
         subcategory_slug = self.request.query_params.get('subcategory', None)
@@ -314,38 +319,6 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
         )
 
     @action(detail=False, methods=['get'])
-    def by_type(self, request):
-        """Get all products grouped by product type (hardware/software)"""
-        product_type = request.query_params.get('type')
-        if not product_type:
-            return self.error_response(
-                message="Product type parameter is required (hardware or software)"
-            )
-        
-        if product_type not in ['hardware', 'software']:
-            return self.error_response(
-                message="Invalid product type. Must be 'hardware' or 'software'"
-            )
-
-        """ Get all active categories with products of this type"""
-        categories = ProductCategory.objects.filter(
-            is_active=True,
-            productsubcategory__product__product_type=product_type,
-            productsubcategory__product__is_active=True
-        ).distinct().order_by('display_order', 'name')
-        
-        serializer = ProductCategorySerializer(categories, many=True)
-        
-        response_data = {
-            'product_type': product_type,
-            'categories': serializer.data
-        }
-        
-        return self.success_response(
-            data=response_data,
-            message=f"{product_type.capitalize()} products retrieved successfully"
-        )
-    @action(detail=False, methods=['get'])
     def by_subcategory(self, request):
         """Get products by subcategory slug"""
         subcategory_slug = request.query_params.get('slug')
@@ -385,7 +358,7 @@ class CategoryDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a category description
     """
     queryset = CategoryDescription.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -471,7 +444,7 @@ class ProductDescriptionViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a product description
     """
     queryset = ProductDescription.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -561,7 +534,7 @@ class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     destroy: Delete a product description row
     """
     queryset = ProductDescriptionRow.objects.all()
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:

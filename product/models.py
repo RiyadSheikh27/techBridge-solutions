@@ -18,8 +18,13 @@ class TimeStampedModel(models.Model):
 
 class ProductCategory(TimeStampedModel):
     """ Categories for Model """
+    PRODUCT_TYPE = [
+        ('hardware', 'Hardware'),
+        ('software', 'Software'),
+    ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, blank=True, null=True)
+    product_type = models.CharField(max_length=255, choices=PRODUCT_TYPE, default='hardware', blank=True, null=True)
     slug = models.CharField(max_length=255, unique=True, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     display_order = models.PositiveIntegerField(
@@ -115,13 +120,13 @@ class CategoryDescription(TimeStampedModel):
     
 class Product(TimeStampedModel):
     """ Main product model with pricing """
-    PRODUCT_TYPE = [
-        ('hardware', 'Hardware'),
-        ('software', 'Software'),
-    ]
+    # PRODUCT_TYPE = [
+    #     ('hardware', 'Hardware'),
+    #     ('software', 'Software'),
+    # ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     subcategory = models.ForeignKey(ProductSubCategory, on_delete=models.CASCADE)
-    product_type = models.CharField(max_length=255, choices=PRODUCT_TYPE, default='hardware')
+    # product_type = models.CharField(max_length=255, choices=PRODUCT_TYPE, default='hardware')
     name = models.CharField(max_length=510, blank=True, null=True)
     slug = models.CharField(max_length=255, unique=True, blank=True, null=True)
     series = models.CharField(max_length=255, blank=True, null=True)
@@ -151,7 +156,7 @@ class Product(TimeStampedModel):
         indexes = [
             models.Index(fields=['subcategory', 'is_active']),
             models.Index(fields=['manufacturer', 'is_active']),
-            models.Index(fields=['product_type', 'is_active']),
+            # models.Index(fields=['product_type', 'is_active']),
             models.Index(fields=['-created_at']),
             models.Index(fields=['slug']),
         ]

@@ -83,3 +83,66 @@ class UpdateCartItemSerializer(serializers.Serializer):
         if value < 1:
             raise serializers.ValidationError("Quantity must be at least 1")
         return value
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    """Serializer for Order Item"""
+    class Meta:
+        model = OrderItem
+        fields = [
+            'id', 'product_name', 
+            'quantity', 'price', 'total'
+        ]
+
+class OrderSerializer(serializers.ModelSerializer):
+    """Serializer for orders with items"""
+    items = OrderItemSerializer(many=True, read_only=True)
+    full_name = serializers.CharField(read_only=True)
+    
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'order_number', 'first_name', 'last_name',
+            'full_name', 'company_name', 'email', 'phone', 
+            'address', 'subtotal', 'delivery_charge', 'total',
+            'status', 'payment_status', 'items',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'order_number', 'payment_status',
+            'created_at', 'updated_at'
+        ]
+
+class CheckoutSerializer(serializers.Serializer):
+    """Serializer for checkout process"""
+    first_name = serializers.CharField(max_length=255)
+    last_name = serializers.CharField(max_length=255)
+    company_name = serializers.CharField(
+        max_length=255, 
+        required=False, 
+        allow_blank=True
+    )
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20)
+    address = serializers.CharField()
+    
+    def validate_email(self, value):
+        """Validate email format"""
+        return value.lower()
+    
+    def validate_phone(self, value):
+        """Validate phone number"""
+        cleaned = ''.join(filter(str.isdigit, value))
+        if len(cleaned) < 10:
+            raise serializers.ValidationError(
+                "Phone number must be at least 10 digits"
+            )
+        return value
+
+class DeliveryChargeSerializer(serializers.ModelSerializer):
+    """Serializer for delivery charge"""
+    
+    class Meta:
+        model = DeliveryCharge
+        fields = ['id', 'amount', 'is_active', 'created_at']
+        read_only_fields = ['id', 'created_at']

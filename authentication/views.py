@@ -1,224 +1,299 @@
-from django.shortcuts import render, get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.conf import settings
-from .serializers import *
-from .models import *
-from .utils import *
 from rest_framework.permissions import IsAuthenticated, AllowAny
-import random
 from django.core.mail import send_mail
+from django.conf import settings
+from django.core.cache import cache
+from .models import Users
+from .serializers import *
+from .utils import get_tokens_for_user
+from .permissions import IsAdmin
+import random
 
-""" Start of Creating Views for Authentication Section """
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def registration(request):
-    """ Registration View """
+    """Step 1: Register user and send OTP"""
     serializer = RegistrationSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+    
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     email = serializer.validated_data['email']
-
     otp = str(random.randint(1000, 9999))
-    subject = "OTP for Registration"
-    message = f"Your OTP code is {otp}. It is valid for 5 minutes."
-
+    
     try:
+        subject = 'Email Verification - OTP'
+        message = f'Your OTP for registration is: {otp}\n\nThis OTP is valid for 5 minutes.'
+        
         send_mail(
-                subject,
-                message,
-                settings.EMAIL_HOST_USER,
-                [email],
-                fail_silently=False,
-            )
-
-        from django.core.cache import cache
-        cache.set(f"reg_otp_{email}", {
-            "otp": otp,
-            "data": serializer.validated_data
-        }, timeout=300) 
-
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+        
+        cache.set(f'registration_{email}', {
+            'otp': otp,
+            'data': serializer.validated_data
+        }, timeout=300)
+        print(otp)
+        
         return Response({
-            "success": True,
-            "message": f"OTP sent to {email}",
-            "otp": otp
-        })
-
+            'success': True,
+            'message': f'OTP sent to {email}',
+            'email': email
+        }, status=status.HTTP_200_OK)
+        
     except Exception as e:
-        print("Email error:", e)
-        return Response({"success": False, "message": "Failed to send OTP"}, status=500)
+        return Response({
+            'success': False,
+            'message': 'Failed to send OTP. Please try again.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_registration_otp(request):
-    """ Verify Registration OTP View """
-    email = request.data.get("email")
-    otp = request.data.get("otp")
-
-    from django.core.cache import cache
-    temp_data = cache.get(f"reg_otp_{email}")
-
-    if not temp_data:
-        return Response({"success": False, "message": "OTP expired or invalid"}, status=400)
-
-    if temp_data['otp'] != otp:
-        return Response({"success": False, "message": "Incorrect OTP"}, status=400)
-
-    user_data = temp_data['data']
-    password = user_data.pop("password")
-
-    user = Users.objects.create(**user_data)
-    user.set_password(password)
-    user.save()
-
-    cache.delete(f"reg_otp_{email}")
-
-    return Response({
-        "success": True,
-        "message": "Registration completed",
-        "user": GetProfileDataSerializer(user).data,
-        "token": get_tokens_for_user(user)
-    }, status=201)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def social_signup_signin(request):
-    """ Social Signup Signin View """
-    serializer = SocialSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+    """Step 2: Verify OTP for both registration and password reset"""
+    serializer = VerifyOTPSerializer(data=request.data)
     
-    user, created = serializer.create_or_get_user()
-    user_data_serializer = GetProfileDataSerializer(instance=user)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
+    email = serializer.validated_data['email']
+    otp = serializer.validated_data['otp']
+    
+    """Check for registration OTP"""
+    registration_data = cache.get(f'registration_{email}')
+    if registration_data and registration_data['otp'] == otp:
+        try:
+            user_data = registration_data['data']
+            password = user_data.pop('password')
+            
+            user = Users.objects.create(**user_data)
+            user.set_password(password)
+            user.is_active = True
+            user.save()
+            
+            cache.delete(f'registration_{email}')
+            tokens = get_tokens_for_user(user)
+            
+            return Response({
+                'success': True,
+                'message': 'Registration completed successfully',
+                'user': UserProfileSerializer(user).data,
+                'tokens': tokens
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to create user. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    password_reset_otp = cache.get(f'password_reset_{email}')
+    if password_reset_otp and password_reset_otp == otp:
+        cache.set(f'verified_{email}', True, timeout=60)
+        
+        return Response({
+            'success': True,
+            'message': 'OTP verified successfully. Please set your new password.',
+            'email': email
+        }, status=status.HTTP_200_OK)
+    
+    """If no match found"""
     return Response({
-        "success": True,
-        'message': 'Successfully authenticated.',
-        'user': user_data_serializer.data,
-        'token': get_tokens_for_user(user),
-    }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        'success': False,
+        'message': 'Invalid or expired OTP.'
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
-    """ Login View """
-    serializer = LoginSerialzer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
+    """Login user"""
+    serializer = LoginSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
     user = serializer.validated_data['user']
-
-    user_data_serializer = GetProfileDataSerializer(instance=user)
-
+    tokens = get_tokens_for_user(user)
+    
     return Response({
-        "success": True,
-        'message': 'Successfully logged in.',
-        'user': user_data_serializer.data,
-        'token': get_tokens_for_user(user),
+        'success': True,
+        'message': 'Login successful',
+        'user': UserProfileSerializer(user).data,
+        'tokens': tokens
     }, status=status.HTTP_200_OK)
-   
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def forgot_password(request):
-    """ Forgot Password View """
+    """Send OTP for password reset"""
     serializer = ForgotPasswordSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-    email =  serializer.validated_data['email']
-    user = serializer.validated_data['user']
-
-    otp = str(random.randint(1000, 9999))
-    subject = 'Forgot Password OTP'
-    message = f'Your OTP code is {otp}. It is valid for 5 minutes.'
-
-    try:
-        send_mail(
-                subject,
-                message,
-                settings.EMAIL_HOST_USER,
-                [email],
-                fail_silently=False,
-            )
-        user.otp = otp
-        user.save(update_fields=['otp', 'otp_expired']) 
-
-        return Response({
-            "success": True,
-            'message': f'OTP successfully sent to {email} || otp : {otp}'
-        }, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        print('error : ', e)
-        return Response({
-            "success": False,
-            "message": "Failed to send OTP email."
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    email = serializer.validated_data['email']
+    otp = str(random.randint(1000, 9999))
+    
+    try:
+        subject = 'Password Reset - OTP'
+        message = f'Your OTP for password reset is: {otp}\n\nThis OTP is valid for 5 minutes.'
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+        
+        cache.set(f'password_reset_{email}', otp, timeout=300)
+        
+        return Response({
+            'success': True,
+            'message': f'OTP sent to {email}',
+            'email': email
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': 'Failed to send OTP. Please try again.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def vaify_otp(request):
-    """ Verify OTP View """
-    serializer = VarifiedOTPSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-    return Response({
-        "success": True,
-        'message': 'otp vairified'
-    }, status=status.HTTP_200_OK)
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def reset_new_password(request):
-    """ Reset New Password View """
-    serializer = ResetNewPasswordSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-
-    return Response({
-        "success": True,
-        'message': 'Password updated successfully'
-    }, status=status.HTTP_200_OK)
+def reset_password(request):
+    """Reset password after OTP verification"""
+    serializer = ResetPasswordSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    email = serializer.validated_data['email']
+    new_password = serializer.validated_data['new_password']
+    
+    """ Check if OTP was verified"""
+    is_verified = cache.get(f'verified_{email}')
+    if not is_verified:
+        return Response({
+            'success': False,
+            'message': 'Please verify OTP first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = Users.objects.get(email=email)
+        user.set_password(new_password)
+        user.save()
+        
+        """ Clean up cache"""
+        cache.delete(f'password_reset_{email}')
+        cache.delete(f'verified_{email}')
+        
+        return Response({
+            'success': True,
+            'message': 'Password reset successfully'
+        }, status=status.HTTP_200_OK)
+        
+    except Users.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'User not found.'
+        }, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def change_password(request):
-    """ Change Password View """
+    """Change password for authenticated user"""
     serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-
-    serializer.save()
-
+    
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    user = request.user
+    new_password = serializer.validated_data['new_password']
+    
+    user.set_password(new_password)
+    user.save()
+    
     return Response({
-        "success": True,
-        'message': 'Change password successfully'
+        'success': True,
+        'message': 'Password changed successfully'
     }, status=status.HTTP_200_OK)
 
-@api_view(['GET', 'PATCH'])
+
+@api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def profile_data(request):
-    """ Profile Data View """
-    user = request.user
-    if request.method == 'GET':
-        serialzier = GetProfileDataSerializer(instance=user)
+def get_profile(request):
+    """Get user profile"""
+    serializer = UserProfileSerializer(request.user)
+    return Response({
+        'success': True,
+        'user': serializer.data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    """Update user profile"""
+    serializer = UpdateProfileSerializer(
+        request.user, 
+        data=request.data, 
+        partial=True
+    )
     
+    if not serializer.is_valid():
         return Response({
-            'message': 'get user successfully',
-            'user': serialzier.data, 
-        }, status=status.HTTP_200_OK)
-
-    if request.method == 'PATCH':
-        serializer = ProfileUpdateSerializer(instance=user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        profile_serialzier = GetProfileDataSerializer(instance=user)
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
     
-        return Response({
-            "success": True,
-            'message': 'Profile updated successfully',
-            'user': profile_serialzier.data
-        }, status=status.HTTP_200_OK)
+    serializer.save()
+    
+    return Response({
+        'success': True,
+        'message': 'Profile updated successfully',
+        'user': UserProfileSerializer(request.user).data
+    }, status=status.HTTP_200_OK)
 
-""" End of Creating Views for Authentication Section """
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def user_list(request):
+    """Get all users (Admin only)"""
+    users = Users.objects.all().order_by('-created_at')
+    serializer = UserListSerializer(users, many=True)
+    
+    return Response({
+        'success': True,
+        'count': users.count(),
+        'users': serializer.data
+    }, status=status.HTTP_200_OK)

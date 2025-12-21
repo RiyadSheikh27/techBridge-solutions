@@ -29,13 +29,12 @@ class ProductDescriptionSerializer(serializers.ModelSerializer):
     
 class ProductListSerializer(serializers.ModelSerializer):
     """Serializer for product listing"""
-    
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'slug', 'series', 'image', 'msrp', 
             'price', 'stock', 'is_in_stock', 'manufacturer',
-            'is_featured', 'product_type'
+            'is_featured'
         ]
 
 class ProductDetailSerializer(serializers.ModelSerializer):
@@ -44,6 +43,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     descriptions = serializers.SerializerMethodField()
     subcategory_name = serializers.CharField(source='subcategory.name', read_only=True)
     category_name = serializers.CharField(source='subcategory.category.name', read_only=True)
+    product_type = serializers.CharField(source='subcategory.category.product_type', read_only=True)
     
     class Meta:
         model = Product
@@ -76,6 +76,18 @@ class CategoryDescriptionSerializer(serializers.ModelSerializer):
         model = CategoryDescription
         fields = ['id', 'title', 'description']
         read_only_fields = ['id']
+
+class ProductSubCategoryListSerializer(serializers.ModelSerializer):
+    """Serializer for subcategories with descriptions and products"""
+    active_products_count = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = ProductSubCategory
+        fields = [
+            'id', 'name', 'slug', 'is_active', 'display_order',
+            'active_products_count'
+        ]
+        read_only_fields = ['id', 'slug']
 
 class ProductSubCategorySerializer(serializers.ModelSerializer):
     """Serializer for subcategories with descriptions and products"""
@@ -112,7 +124,7 @@ class ProductCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductCategory
         fields = [
-            'id', 'name', 'slug', 'is_active', 'display_order',
+            'id', 'name', 'slug', 'product_type', 'is_active', 'display_order',
             'active_subcategories_count', 'subcategories'
         ]
         read_only_fields = ['id', 'slug']
@@ -123,7 +135,7 @@ class ProductCategorySerializer(serializers.ModelSerializer):
             category=obj,
             is_active=True
         ).order_by('display_order', 'name')
-        return ProductSubCategorySerializer(subcategories, many=True).data
+        return ProductSubCategoryListSerializer(subcategories, many=True).data
     
 class ProductTypeSerializer(serializers.Serializer):
     """Serializer for product type grouping"""
@@ -135,7 +147,7 @@ class ProductCategoryWriteSerializer(serializers.ModelSerializer):
     """Serializer for writing product categories"""
     class Meta:
         model = ProductCategory
-        fields = ['id', 'name', 'slug', 'is_active', 'display_order']
+        fields = ['id', 'name', 'slug', 'product_type', 'is_active', 'display_order']
         read_only_fields = ['id', 'slug']
 
 class ProductSubCategoryWriteSerializer(serializers.ModelSerializer):
@@ -160,7 +172,7 @@ class ProductWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'subcategory', 'product_type', 'name', 'series',
+            'id', 'subcategory', 'name', 'series',
             'image', 'msrp', 'price', 'stock', 'is_in_stock',
             'mfr_part', 'shi_part', 'unspsc', 'manufacturer',
             'description', 'is_active', 'is_featured', 'display_order'
