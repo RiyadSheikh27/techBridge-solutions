@@ -171,7 +171,7 @@ class OrderItem(TimeStampedModel):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True)
     product_name = models.CharField(max_length=255)
-    product_type = models.CharField(max_length=255)
+    product_type = models.CharField(max_length=255, null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
     price = models.DecimalField(max_digits=10, decimal_places=2)
     total = models.DecimalField(max_digits=10, decimal_places=2)
@@ -196,8 +196,6 @@ class OrderItem(TimeStampedModel):
             self.total = self.price * self.quantity
         if not self.product_name and self.product:
             self.product_name = self.product.name
-        if not self.product_type and self.product:
-            self.product_type = self.product.product_type
         super().save(*args, **kwargs)
 
 
@@ -225,4 +223,4 @@ class DeliveryCharge(TimeStampedModel):
     def get_current_charge(cls):
         """Get current active delivery charge"""
         charge = cls.objects.filter(is_active=True).first()
-        return charge.amount if charge else Decimal('10.00')  
+        return charge.amount if charge else Decimal('10.00')

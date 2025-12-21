@@ -18,11 +18,21 @@ router.register(r'products-subcategory-descriptions', CategoryDescriptionViewSet
 router.register(r'products-descriptions', ProductDescriptionViewSet, basename='product-description')
 router.register(r'products-description-rows', ProductDescriptionRowViewSet, basename='description-row')
 
+
+
+""" Registered ViewSets for Delivery Charge Section """
+router.register(r'orders', OrderViewSet, basename='order')
+router.register(r'delivery-charge', DeliveryChargeViewSet, basename='delivery-charge')
+
 """ Registered ViewSets for Checkout Section """
 router.register(r'cart', CartViewSet, basename='cart')
 
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('checkout/create-payment-intent/', CheckoutViewSet.as_view({'post': 'create_payment_intent'}), name='create-payment-intent'),
+    path('checkout/confirm-payment/', CheckoutViewSet.as_view({'post': 'confirm_payment'}), name='confirm-payment'),
+    path('checkout/create-order/', CheckoutViewSet.as_view({'post': 'create_order'}), name='create-order'),
+    
     path('swagger/', schema_view.with_ui('swagger',cache_timeout=0), name='schema-swagger-ui'),
 ]

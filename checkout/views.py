@@ -1,17 +1,30 @@
+import stripe
 from django.shortcuts import render
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from .models import *
 from .serializers import *
 from product.views import CustomResponseMixin
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
+from product.models import Product
+from authentication.permissions import IsAdmin, IsAdminOrReadOnly
+from django.db import transaction
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 """ Start of Views for Checkout Section """
 
 class CartViewSet(CustomResponseMixin, viewsets.ModelViewSet):
-    """ViewSet for Cart"""
-    permission_class = [IsAuthenticated]
+    """
+    ViewSet for shopping cart operations
+    
+    list: Get current cart with all items
+    add_item: Add product to cart
+    update_item: Update item quantity
+    remove_item: Remove item from cart
+    clear: Clear entire cart
+    """
+    permission_class = [IsAuthenticatedOrReadOnly]
 
     queryset = Cart.objects.all()
 
@@ -175,3 +188,407 @@ class CartViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             return self.error_response(
                 message=f"Failed to clear cart: {str(e)}"
             )
+
+class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for orders (read-only)
+    
+    list: Get orders (admin: all, user: own orders)
+    retrieve: Get single order details
+    update_status: Update order status (admin only)
+    my_orders: Get current user's orders (authenticated users)
+    track_order: Track order by order number and email (public)
+    """
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'order_number'
+    
+    def get_queryset(self):
+        """Get orders based on user role"""
+        queryset = Order.objects.prefetch_related('items').all()
+        
+        """Admin sees all orders"""
+        if self.request.user.is_authenticated and (
+            self.request.user.is_staff or self.request.user.is_superuser
+        ):
+            return queryset.order_by('-created_at')
+        
+
+        """Authenticate users sees their own orders"""
+        if self.request.user.is_authenticated:
+            return queryset.filter(user=self.request.user).order_by('-created_at')
+
+        """Regular users filter by email"""
+        email = self.request.query_params.get('email', None)
+        if email:
+            queryset = queryset.filter(email=email.lower())
+        
+        return queryset.order_by('-created_at')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+
+        """pagination"""
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Orders retrieved successfully"
+        )
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Order retrieved successfully"
+        )
+
+    @action(detail=True, methods=['patch'])
+    def update_status(self, request, order_number=None):
+        """Update order status (admin only)"""
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return self.error_response(
+                message="Admin access required",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        new_status = request.data.get('status')
+        
+        if not new_status:
+            return self.error_response(
+                message="Status is required"
+            )
+        
+        valid_statuses = ['pending', 'processing', 'completed', 'failed', 'cancelled']
+        if new_status not in valid_statuses:
+            return self.error_response(
+                message=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            )
+        
+        try:
+            order = self.get_object()
+            old_status = order.status
+            order.status = new_status
+            
+            """Auto-update payment status based on order status"""
+            if new_status == 'completed':
+                order.payment_status = 'paid'
+            elif new_status == 'failed' or new_status == 'cancelled':
+                if order.payment_status == 'pending':
+                    order.payment_status = 'failed'
+            
+            order.save()
+            serializer = self.get_serializer(order)
+            
+            return self.success_response(
+                data=serializer.data,
+                message=f"Order status updated from {old_status} to {new_status}"
+            )
+            
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to update status: {str(e)}"
+            )
+
+    @action(detail=False, methods=['get'])
+    def my_orders(self, request):
+        """ get current user's orders (authenticated users)"""
+        if not request.user.is_authenticated:
+            return self.error_response(
+                message = "Authentication required",
+                status_code = status.HTTP_401_UNAUTHORIZED
+            )
+        
+        orders = Order.objects.filter(user=request.user)
+        serializer = self.get_serializer(orders, many=True)
+
+        return self.success_response(
+            message="Orders retrieved successfully",
+            data=serializer.data
+        )
+
+
+    @action(detail=False, methods=['post'])
+    def track_order(self, request):
+        """Track order by order number and email"""
+        order_number = request.data.get('order_number')
+        email = request.data.get('email')
+        
+        if not order_number or not email:
+            return self.error_response(
+                message="Order number and email are required"
+            )
+        
+        try:
+            order = Order.objects.prefetch_related('items').get(
+                order_number=order_number,
+                email=email.lower()
+            )
+            
+            serializer = self.get_serializer(order)
+            
+            return self.success_response(
+                data=serializer.data,
+                message="Order found successfully"
+            )
+            
+        except Order.DoesNotExist:
+            return self.error_response(
+                message="Order not found. Please check your order number and email.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to track order: {str(e)}"
+            )
+
+
+class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
+    """
+    ViewSet for checkout and payment operations
+    
+    Best Practice Flow:
+    1. create_order: Create order with customer info (status: pending)
+    2. create_payment_intent: Create Stripe payment intent with order_id
+    3. confirm_payment: Verify payment and update order status to paid
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get_cart(self, request):
+        """Get user's cart """
+        try:
+            return Cart.objects.get(user=request.user)
+        except Cart.DoesNotExist:
+            return None
+            
+    @action(detail=False, methods=['post'])
+    def create_order(self, request):
+        """Create order with customer information"""
+        checkout_serializer = CheckoutSerializer(data=request.data)
+        if not checkout_serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                errors=checkout_serializer.errors
+            )
+        
+        """Get cart"""
+        cart = self.get_cart(request)
+        if not cart or not cart.items.exists():
+            return self.error_response(
+                message="Cart is empty",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            """Create order with transaction"""
+            with transaction.atomic():
+                delivery_charge = DeliveryCharge.get_current_charge()
+                subtotal = cart.subtotal
+                total = cart.calculate_total(delivery_charge)
+                
+                """Create order with pending status"""
+                order = Order.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    first_name=checkout_serializer.validated_data['first_name'],
+                    last_name=checkout_serializer.validated_data['last_name'],
+                    company_name=checkout_serializer.validated_data.get('company_name', ''),
+                    email=checkout_serializer.validated_data['email'],
+                    phone=checkout_serializer.validated_data['phone'],
+                    address=checkout_serializer.validated_data['address'],
+                    subtotal=subtotal,
+                    delivery_charge=delivery_charge,
+                    total=total,
+                    status='pending',
+                    payment_status='pending'
+                )
+                
+                """Create order items"""
+                for cart_item in cart.items.all():
+                    OrderItem.objects.create(
+                        order=order,
+                        product=cart_item.product,
+                        product_name=cart_item.product.name,
+                        quantity=cart_item.quantity,
+                        price=cart_item.price,
+                        total=cart_item.total_price
+                    )
+            
+            """Serialize and return order"""
+            order_serializer = OrderSerializer(order)
+            
+            return self.success_response(
+                data=order_serializer.data,
+                message="Order created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+            
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to create order: {str(e)}"
+            )
+    
+    @action(detail=False, methods=['post'])
+    def confirm_payment(self, request):
+        """Confirm payment and create order"""
+        payment_intent_id = request.data.get('payment_intent_id')
+        checkout_data = request.data.get('checkout_data')
+        
+        if not payment_intent_id or not checkout_data:
+            return self.error_response(
+                message="Payment intent ID and checkout data are required"
+            )
+        
+        """ Validate checkout data """
+        checkout_serializer = CheckoutSerializer(data=checkout_data)
+        if not checkout_serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                errors=checkout_serializer.errors
+            )
+        
+        """ Get user's cart """
+        cart = self.get_cart(request)
+        if not cart or not cart.items.exists():
+            return self.error_response(
+                message="Cart is empty",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            """ Verify payment with Stripe """
+            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if intent.status != 'succeeded':
+                return self.error_response(
+                    message="Payment not completed",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+            """ Create order with transaction """
+            with transaction.atomic():
+                delivery_charge = DeliveryCharge.get_current_charge()
+                subtotal = cart.subtotal
+                total = cart.calculate_total(delivery_charge)
+                
+                """ Create order """
+                order = Order.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    first_name=checkout_serializer.validated_data['first_name'],
+                    last_name=checkout_serializer.validated_data['last_name'],
+                    company_name=checkout_serializer.validated_data.get('company_name', ''),
+                    email=checkout_serializer.validated_data['email'],
+                    phone=checkout_serializer.validated_data['phone'],
+                    address=checkout_serializer.validated_data['address'],
+                    subtotal=subtotal,
+                    delivery_charge=delivery_charge,
+                    total=total,
+                    status='processing',
+                    payment_status='paid',
+                    stripe_payment_intent_id=payment_intent_id,
+                    stripe_charge_id=intent.charges.data[0].id if intent.charges.data else None
+                )
+
+                """ Create order items """
+                for cart_item in cart.items.all():
+                    OrderItem.objects.create(
+                        order=order,
+                        product=cart_item.product,
+                        product_name=cart_item.product.name,
+                        product_type=cart_item.product.product_type,
+                        quantity=cart_item.quantity,
+                        price=cart_item.price,
+                        total=cart_item.total_price
+                    )
+                 
+                """ Clear cart """
+                cart.items.all().delete()
+                cart.is_active = False
+                cart.save()
+
+            """ Serialize and return order """
+            order_serializer = OrderSerializer(order)
+            
+            return self.success_response(
+                data=order_serializer.data,
+                message="Order created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+            
+        except stripe.error.StripeError as e:
+            return self.error_response(
+                message=f"Stripe error: {str(e)}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to create order: {str(e)}"
+            )
+
+        
+class DeliveryChargeViewSet(CustomResponseMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for delivery charges (read-only for customers)
+    
+    list: Get all delivery charges
+    current: Get current active delivery charge
+    """
+    queryset = DeliveryCharge.objects.all()
+    serializer_class = DeliveryChargeSerializer
+    permission_classes = [IsAdminOrReadOnly]
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Delivery charges retrieved successfully"
+        )
+
+    def create(self, request, *args, **kwargs):
+        """ Create Delivery Charge"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Delivery charge created successfully"
+        )
+
+    def update(self, request, *args, **kwargs):
+        """ Update Delivery Charge"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Delivery charge updated successfully"
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        """ Delete Delivery Charge"""
+        self.perform_destroy(self.get_object())
+        
+        return self.success_response(
+            message="Delivery charge deleted successfully"
+        )
+    
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """Get current active delivery charge"""
+        charge = DeliveryCharge.get_current_charge()
+        
+        return self.success_response(
+            data={'amount': str(charge)},
+            message="Current delivery charge retrieved successfully"
+        )
