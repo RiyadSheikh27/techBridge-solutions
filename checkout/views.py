@@ -279,7 +279,7 @@ class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             
             """Auto-update payment status based on order status"""
             if new_status == 'completed':
-                order.payment_status = 'paid'
+                order.payment_status = 'completed'
             elif new_status == 'failed' or new_status == 'cancelled':
                 if order.payment_status == 'pending':
                     order.payment_status = 'failed'
@@ -434,94 +434,52 @@ class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
             return self.error_response(
                 message=f"Failed to create order: {str(e)}"
             )
-    
-    @action(detail=False, methods=['post'])
-    def confirm_payment(self, request):
-        """Confirm payment and create order"""
-        payment_intent_id = request.data.get('payment_intent_id')
-        checkout_data = request.data.get('checkout_data')
-        
-        if not payment_intent_id or not checkout_data:
-            return self.error_response(
-                message="Payment intent ID and checkout data are required"
-            )
-        
-        """ Validate checkout data """
-        checkout_serializer = CheckoutSerializer(data=checkout_data)
-        if not checkout_serializer.is_valid():
-            return self.error_response(
-                message="Validation failed",
-                errors=checkout_serializer.errors
-            )
-        
-        """ Get user's cart """
-        cart = self.get_cart(request)
-        if not cart or not cart.items.exists():
-            return self.error_response(
-                message="Cart is empty",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
 
+    @action(detail=False, method=['post'])
+    def create_payment_intent(self, request):
+        """Create payment intent for order"""
+        order_id = request.data.get('order_id')
+
+        if not order_id:
+            return self.error_response(
+                message="Order ID is required"
+            )
+        
         try:
-            """ Verify payment with Stripe """
-            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            order = Order.objects.get(id=order_id, payment_status='pending')
             
-            if intent.status != 'succeeded':
-                return self.error_response(
-                    message="Payment not completed",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
+            intent = stripe.PaymentIntent.create(
+                amount = int(order.total * 100),
+                currency = 'usd',
+                metadata = {
+                    'order_id': str(order.id),
+                    'order_number': order.order_number,
+                    'email': order.email,
+                    }
+            )
 
-            """ Create order with transaction """
-            with transaction.atomic():
-                delivery_charge = DeliveryCharge.get_current_charge()
-                subtotal = cart.subtotal
-                total = cart.calculate_total(delivery_charge)
-                
-                """ Create order """
-                order = Order.objects.create(
-                    user=request.user if request.user.is_authenticated else None,
-                    first_name=checkout_serializer.validated_data['first_name'],
-                    last_name=checkout_serializer.validated_data['last_name'],
-                    company_name=checkout_serializer.validated_data.get('company_name', ''),
-                    email=checkout_serializer.validated_data['email'],
-                    phone=checkout_serializer.validated_data['phone'],
-                    address=checkout_serializer.validated_data['address'],
-                    subtotal=subtotal,
-                    delivery_charge=delivery_charge,
-                    total=total,
-                    status='processing',
-                    payment_status='paid',
-                    stripe_payment_intent_id=payment_intent_id,
-                    stripe_charge_id=intent.charges.data[0].id if intent.charges.data else None
-                )
+            order.stripe_payment_intent_id = intent.id
+            order.save()
 
-                """ Create order items """
-                for cart_item in cart.items.all():
-                    OrderItem.objects.create(
-                        order=order,
-                        product=cart_item.product,
-                        product_name=cart_item.product.name,
-                        product_type=cart_item.product.product_type,
-                        quantity=cart_item.quantity,
-                        price=cart_item.price,
-                        total=cart_item.total_price
-                    )
-                 
-                """ Clear cart """
-                cart.items.all().delete()
-                cart.is_active = False
-                cart.save()
+            payment_data = {
+                'client_secret': intent.client_secret,
+                'payment_intent_id': intent.id,
+                'amount': order.total,
+                'currency': 'usd',
+                'order_number': order.order_number,
+            }
 
-            """ Serialize and return order """
-            order_serializer = OrderSerializer(order)
-            
             return self.success_response(
-                data=order_serializer.data,
-                message="Order created successfully",
+                data=payment_data,
+                message="Payment intent created successfully",
                 status_code=status.HTTP_201_CREATED
             )
             
+        except Order.DoesNotExist:
+            return self.error_response(
+                message="Order not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         except stripe.error.StripeError as e:
             return self.error_response(
                 message=f"Stripe error: {str(e)}",
@@ -529,7 +487,51 @@ class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
             )
         except Exception as e:
             return self.error_response(
-                message=f"Failed to create order: {str(e)}"
+                message=f"Failed to create payment intent: {str(e)}"
+            )
+    
+    @action(detail=False, methods=['post'])
+    def confirm_payment(self, request):
+        """Confirm payment and create order"""
+        payment_intent_id = request.data.get('payment_intent_id')
+        
+        if not payment_intent_id:
+            return self.error_response(
+                message="Payment intent ID is required"
+            )
+        
+        try:
+            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if intent.status != 'succeeded':
+                return self.error_response(
+                    message="Payment not completed",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(id=intent.metadata['order_id'])
+                order.status = 'processing'
+                order.payment_status = 'completed'
+                order.save()
+                
+            return self.success_response(
+                message="Payment confirmed successfully",
+                status_code=status.HTTP_200_OK
+            )
+
+        except Order.DoesNotExist:
+            return self.error_response(
+                message="Order not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except stripe.error.StripeError as e:
+            return self.error_response(
+                message=f"Stripe error: {str(e)}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to confirm payment: {str(e)}"
             )
 
         

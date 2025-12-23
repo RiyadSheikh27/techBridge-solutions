@@ -120,13 +120,8 @@ class CategoryDescription(TimeStampedModel):
     
 class Product(TimeStampedModel):
     """ Main product model with pricing """
-    # PRODUCT_TYPE = [
-    #     ('hardware', 'Hardware'),
-    #     ('software', 'Software'),
-    # ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     subcategory = models.ForeignKey(ProductSubCategory, on_delete=models.CASCADE)
-    # product_type = models.CharField(max_length=255, choices=PRODUCT_TYPE, default='hardware')
     name = models.CharField(max_length=510, blank=True, null=True)
     slug = models.CharField(max_length=255, unique=True, blank=True, null=True)
     series = models.CharField(max_length=255, blank=True, null=True)

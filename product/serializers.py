@@ -115,6 +115,28 @@ class ProductSubCategorySerializer(serializers.ModelSerializer):
         ).order_by('display_order', '-created_at')
         
         return ProductDetailSerializer(products, many=True).data
+
+class ProductSubCategorySerializer2(serializers.ModelSerializer):
+    """Serializer for subcategories with descriptions and products"""
+    products = serializers.SerializerMethodField()
+    active_products_count = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = ProductSubCategory
+        fields = [
+            'id', 'name', 'slug', 'is_active', 'display_order',
+            'active_products_count', 'products'
+        ]
+        read_only_fields = ['id', 'slug']
+    
+    def get_products(self, obj):
+        """Get all active products under this subcategory"""
+        products = Product.objects.filter(
+            subcategory=obj,
+            is_active=True
+        ).order_by('display_order', '-created_at')
+        
+        return ProductListSerializer(products, many=True).data
     
 class ProductCategorySerializer(serializers.ModelSerializer):
     """Serializer for categories with subcategories"""
@@ -135,7 +157,7 @@ class ProductCategorySerializer(serializers.ModelSerializer):
             category=obj,
             is_active=True
         ).order_by('display_order', 'name')
-        return ProductSubCategoryListSerializer(subcategories, many=True).data
+        return ProductSubCategorySerializer2(subcategories, many=True).data
     
 class ProductTypeSerializer(serializers.Serializer):
     """Serializer for product type grouping"""

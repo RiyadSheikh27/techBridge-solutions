@@ -218,9 +218,9 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update']:
             return ProductWriteSerializer
         elif self.action == 'list':
-            return ProductDetailSerializer
-            # return ProductListSerializer
-        return ProductListSerializer
+            return ProductListSerializer
+        return ProductDetailSerializer
+        
 
     def get_queryset(self):
         queryset = Product.objects.select_related(
@@ -230,10 +230,6 @@ class ProductViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             'productdescription_set',
             'productdescription_set__productdescriptionrow_set'
         )
-        # """Filter by product type"""
-        # product_type = self.request.query_params.get('type', None)
-        # if product_type:
-        #     queryset = queryset.filter(product_type=product_type)
         
         """Filter by subcategory"""
         subcategory_slug = self.request.query_params.get('subcategory', None)

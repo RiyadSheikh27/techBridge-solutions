@@ -1,29 +1,41 @@
-# Python
-*.pyc
 __pycache__/
-*.pyo
-*.pyd
+*.py[cod]
 
-# Virtual environments
-venv/
-myenv/
-# env/
-# *.env
-# .env/
+# ===============================
+# Virtual Environments
+# ===============================
+env/
+*env/
+env*
 
-django-server-key.pem
+# ===============================
+# Environment Variables (SECRETS)
+# ===============================
+.env
+*.env
+.env*
 
-# Django stuff
+# ===============================
+# Django
+# ===============================
 db.sqlite3
-# media/
-# staticfiles/
+django-server-key.pem
+media/
+staticfiles/
 
-# VSCode / PyCharm
+# ===============================
+# IDE / Editor
+# ===============================
 .vscode/
 .idea/
 
-# OS files
+# ===============================
+# OS
+# ===============================
 .DS_Store
 Thumbs.db
 
+# ===============================
+# Custom
+# ===============================
 **/helper.txt
