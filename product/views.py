@@ -1,3 +1,5 @@
+import openpyxl
+import uuid
 from django.shortcuts import render
 from rest_framework import viewsets
 from .models import *
@@ -6,6 +8,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
+from openpyxl import load_workbook
+from io import BytesIO
+from django.core.cache import cache
+
 
 """ Start of Creating Views for Product Section """
 
@@ -596,5 +602,181 @@ class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             status_code=204,
             message="Product Description Row Deleted Successfully"
         )
+
+
+""" Bulk Product Upload from Excel Section """
+class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
+    """ViewSet for Bulk Product Upload from Excel
+    Upload Excel File to upload products
+    Save Selected Products to Database
+    """
+    def _safe_decimal(self, value):
+        """Safe Decimal Conversion"""
+        if value is None or value == '':
+            return Decimal(default)
+        try:
+            return Decimal(str(value))
+        except ValueError:
+            return Decimal(default)
+
+    def _safe_int(self, value, default=0):
+        """Safely convert value to integer"""
+        if value is None or value == '':
+            return default
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+    
+    def _safe_bool(self, value, default=True):
+        """Safely convert value to boolean"""
+        if value is None or value == '':
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() in ['true', 'yes', '1', 'y']
+        return bool(value)
+
+    def _parse_excel_row(self, row, subcategory_id, row_number):
+        """Parse a single row from the Excel file"""
+        try:
+            """Generate unique id for this parsed product"""
+            temp_id = str(uuid.uuid4())
+
+            product_data = {
+                'id': temp_id,
+                'row_number': row_number,
+                'subcategory': subcategory_id,
+                'name': str(row[1].value or '').strip(),
+                'series': str(row[2].value or '').strip() if row[2].value else None,
+                'msrp': str(self._safe_decimal(row[3].value, '0.00')),
+                'price': str(self._safe_decimal(row[4].value, '0.00')),
+                'stock': self._safe_int(row[5].value, 100),
+                'is_in_stock': self._safe_bool(row[6].value, True),
+                'mfr_part': str(row[7].value or '').strip() if row[7].value else None,
+                'shi_part': str(row[8].value or '').strip() if row[8].value else None,
+                'unspsc': str(row[9].value or '').strip() if row[9].value else None,
+                'manufacturer': str(row[10].value or '').strip() if row[10].value else None,
+                'description': str(row[11].value or '').strip(),
+                'is_active': self._safe_bool(row[12].value, False),
+                'is_featured': self._safe_bool(row[13].value, False),
+                'display_order': self._safe_int(row[14].value, 0),
+                'valid': True,
+                'errors': []
+            }
+            """Validate"""
+            if not product_data['name']:
+                product_data['valid'] = False
+                product_data['errors'].append('Name is required')
+
+            if not product_data['msrp']:
+                product_data['valid'] = False
+                product_data['errors'].append('MSRP is required')
+
+            if not product_data['price']:
+                product_data['valid'] = False
+                product_data['errors'].append('Price is required')
+
+            if not product_data['description']:
+                product_data['valid'] = False
+                product_data['errors'].append('Description is required')
+
+            return product_data
+
+        except Exception as e:
+            return {
+                'id': str(uuid.uuid4()),
+                'row_number': row_number,
+                'valid': False,
+                'errors': [f'Error parsing row: {str(e)}'],
+                'name': 'Error'
+            }
+    
+    @action(detail=False, methods=['post'])
+    def upload_excel(self, request):
+        """
+        Upload Excel file and get parsed products with unique IDs
+        Expected request:
+        - subcategory (UUID): Subcategory ID
+        - file (File): Excel file
+        """
+        subcategory_id = request.data.get('subcategory')
+        excel_file = request.data.get('file')
+
+        if not subcategory_id:
+            return self.error_response(
+                message="Subcategory ID is required"
+            )
+        
+        if not excel_file:
+            return self.error_response(
+                message="Excel file is required"
+            )
+        """Validate Subcategory exists"""
+        try:
+            subcategory = ProductSubCategory.objects.get(id=subcategory_id)
+        except ProductSubCategory.DoesNotExist:
+            return self.error_response(
+                message="Subcategory does not exist",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        try:
+            """Read Excel file"""
+            workbook = openpyxl.load_workbook(BytesIO(excel_file.read()))
+            sheet = workbook.active
+            
+            """Parse products (skip header row)"""
+            products = []
+            for idx, row in enumerate(sheet.iter_rows(min_row=2), start=2):
+                """Skip empty rows"""
+                if not any(cell.value for cell in row):
+                    continue
+                
+                product_data = self._parse_excel_row(row, subcategory_id, idx)
+                products.append(product_data)
+            
+            if not products:
+                return self.error_response(
+                    message="No valid products found in Excel file"
+                )
+
+            """ Store Products in Cache for Later Retrieval (30 minutes)"""
+            cache_key = f"bulk_upload_{request.user.id}_{uuid.uuid4()}"
+            cache.set(cache_key, products, timeout=1800)
+
+            """Summary"""
+            valid_count = sum(1 for p in products if p['valid'])
+            invalid_count = len(products) - valid_count
+
+            return self.success_response(
+                data={
+                    'cache_key': cache_key,
+                    'subcategory': {
+                        'id': str(subcategory.id),
+                        'name': subcategory.name,
+                        'category_name': subcategory.category.name
+                    },
+                    'products': products,
+                    'summary': {
+                        'total': len(products),
+                        'valid': valid_count,
+                        'invalid': invalid_count
+                    }
+                },
+                message=f"Excel parsed successfully. {valid_count} valid products found."
+            )
+            
+        except openpyxl.utils.exceptions.InvalidFileException:
+            return self.error_response(
+                message="Invalid Excel file format. Please upload a valid .xlsx file"
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to parse Excel file: {str(e)}"
+            )
+    
+
+""" End ofBulk Product Upload from Excel Section """
 
 """ End of Creating Views for Product Section """

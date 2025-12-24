@@ -10,6 +10,8 @@ from .serializers import *
 from .utils import get_tokens_for_user
 from .permissions import IsAdmin
 import random
+from django.shortcuts import get_object_or_404
+
 
 
 @api_view(['POST'])
@@ -178,7 +180,7 @@ def forgot_password(request):
     except Exception as e:
         return Response({
             'success': False,
-            'message': 'Failed to send OTP. Please try again.'
+            'message': f'Failed to send OTP. Please try again.{e}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -290,10 +292,40 @@ def update_profile(request):
 def user_list(request):
     """Get all users (Admin only)"""
     users = Users.objects.all().order_by('-created_at')
+
+    total_users = users.count()
+    total_active_users = users.filter(is_active=True).count()
+    total_inactive_users = users.filter(is_active=False).count()
+
     serializer = UserListSerializer(users, many=True)
     
     return Response({
         'success': True,
-        'count': users.count(),
+        'messgae': "Users retrieved successfully",
+        'statistics': {
+            'total_users': total_users,
+            'total_active_users': total_active_users,
+            'total_inactive_users': total_inactive_users
+        },
         'users': serializer.data
     }, status=status.HTTP_200_OK)
+
+@api_view(['PUT'])
+@permission_classes([IsAdmin])
+def ChangeUserStatus(request, user_id):
+    user = get_object_or_404(Users, id=user_id)
+    serializer = UserStatusChangeSerializer(user, data=request.data)
+
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    serializer.save()
+    return Response({
+        'success': True,
+        'message': 'User status changed successfully',
+        'user': UserStatusChangeSerializer(user).data
+    }, status=status.HTTP_200_OK)
+

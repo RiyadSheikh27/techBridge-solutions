@@ -7,8 +7,10 @@ djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
 dotenv==0.9.9
 drf-yasg==1.21.11
+et_xmlfile==2.0.0
 idna==3.11
 inflection==0.5.1
+openpyxl==3.1.5
 packaging==25.0
 pillow==12.0.0
 PyJWT==2.10.1

@@ -18,7 +18,7 @@ class ProductDescriptionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProductDescription
-        fields = ['id', 'title', 'subtitle', 'is_active', 'display_order', 'rows']
+        fields = ['id', 'title', 'subtitle', 'display_order', 'rows']
         read_only_fields = ['id']
 
     def get_rows(self, obj):
@@ -29,12 +29,15 @@ class ProductDescriptionSerializer(serializers.ModelSerializer):
     
 class ProductListSerializer(serializers.ModelSerializer):
     """Serializer for product listing"""
+    subcategory_name = serializers.CharField(source='subcategory.name', read_only=True)
+    category_name = serializers.CharField(source='subcategory.category.name', read_only=True)
+    product_type = serializers.CharField(source='subcategory.category.product_type', read_only=True)
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'slug', 'series', 'image', 'msrp', 
             'price', 'stock', 'is_in_stock', 'manufacturer',
-            'is_featured'
+            'is_featured', 'subcategory_name', 'category_name', 'product_type'
         ]
 
 class ProductDetailSerializer(serializers.ModelSerializer):

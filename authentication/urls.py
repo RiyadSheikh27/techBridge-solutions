@@ -15,4 +15,5 @@ urlpatterns = [
     path('profile/update/', views.update_profile, name='update_profile'),
     
     path('users/', views.user_list, name='user_list'),
+    path('users/suspend/<uuid:user_id>/', views.ChangeUserStatus, name='ChangeUserStatus'),
 ]
