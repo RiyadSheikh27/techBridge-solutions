@@ -12,8 +12,6 @@ from .permissions import IsAdmin
 import random
 from django.shortcuts import get_object_or_404
 
-
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def registration(request):
@@ -328,4 +326,5 @@ def ChangeUserStatus(request, user_id):
         'message': 'User status changed successfully',
         'user': UserStatusChangeSerializer(user).data
     }, status=status.HTTP_200_OK)
+
 

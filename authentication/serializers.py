@@ -110,11 +110,6 @@ class UserListSerializer(serializers.ModelSerializer):
         fields = ['id', 'first_name', 'last_name', 'email', 'image', 'role', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['id', 'total_users', 'total_active_users', 'total_inactive_users']
 
-# class UserStatisticsSerializer(serializers.ModelSerializer):
-#     """For admin to view user statistics"""
-#     class Meta:
-#         model = Users
-#     pass
 
 class UserStatusChangeSerializer(serializers.ModelSerializer):
     class Meta:

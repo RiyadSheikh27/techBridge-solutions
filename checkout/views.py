@@ -492,7 +492,7 @@ class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
     
     @action(detail=False, methods=['post'])
     def confirm_payment(self, request):
-        """Confirm payment and create order"""
+        """Confirm payment and update order"""
         payment_intent_id = request.data.get('payment_intent_id')
         
         if not payment_intent_id:
@@ -501,28 +501,56 @@ class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
             )
         
         try:
+            # Retrieve payment intent from Stripe to verify it succeeded
             intent = stripe.PaymentIntent.retrieve(payment_intent_id)
             
             if intent.status != 'succeeded':
                 return self.error_response(
-                    message="Payment not completed",
+                    message=f"Payment not completed. Status: {intent.status}",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
+            
+            # Update order using the payment_intent_id stored in the order
             with transaction.atomic():
-                order = Order.objects.select_for_update().get(id=intent.metadata['order_id'])
+                order = Order.objects.select_for_update().get(
+                    stripe_payment_intent_id=payment_intent_id
+                )
+                
+                # Prevent duplicate confirmation
+                if order.payment_status == 'completed':
+                    return self.error_response(
+                        message="Payment already confirmed",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+                
                 order.status = 'processing'
                 order.payment_status = 'completed'
                 order.save()
                 
+                # Clear the user's cart after successful payment
+                if order.user:
+                    cart = Cart.objects.filter(user=order.user, is_active=True).first()
+                    if cart:
+                        cart.items.all().delete()
+            
+            # Serialize order data to return
+            order_serializer = OrderSerializer(order)
+            
             return self.success_response(
+                data=order_serializer.data,
                 message="Payment confirmed successfully",
                 status_code=status.HTTP_200_OK
             )
-
+    
         except Order.DoesNotExist:
             return self.error_response(
-                message="Order not found",
+                message="Order not found for this payment intent",
                 status_code=status.HTTP_404_NOT_FOUND
+            )
+        except stripe.error.InvalidRequestError as e:
+            return self.error_response(
+                message=f"Invalid payment intent: {str(e)}",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
         except stripe.error.StripeError as e:
             return self.error_response(
@@ -531,10 +559,10 @@ class CheckoutViewSet(CustomResponseMixin, viewsets.ViewSet):
             )
         except Exception as e:
             return self.error_response(
-                message=f"Failed to confirm payment: {str(e)}"
+                message=f"Failed to confirm payment: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        
+            
 class DeliveryChargeViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     """
     ViewSet for delivery charges (read-only for customers)
