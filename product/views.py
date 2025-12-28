@@ -1,6 +1,6 @@
 import openpyxl
 import uuid
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets
 from .models import *
 from .serializers import *
@@ -13,6 +13,7 @@ from io import BytesIO
 from django.core.cache import cache
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
+from authentication.permissions import IsOwnerOrReadOnly
 
 """ Start of Creating Views for Product Section """
 
@@ -604,6 +605,92 @@ class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             message="Product Description Row Deleted Successfully"
         )
 
+class ProductReviewViewSet(CustomResponseMixin, viewsets.ModelViewSet):
+    """ViewSet for Product Reviews"""
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    lookup_field = 'id'
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return ProductReviewWriteSerializer
+        return ProductReviewSerializer
+
+    def get_queryset(self):
+        queryset = ProductReview.objects.select_related('product', 'user')
+        
+        # Filter by Product
+        product_id = self.request.query_params.get('product')
+        if product_id:
+            get_object_or_404(Product, id=product_id)
+            queryset = queryset.filter(product_id=product_id)
+        
+        # Filter by user for their own reviews
+        user_id = self.request.query_params.get('user')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+            
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return self.success_response(
+            data=serializer.data,
+            message="Product reviews retrieved successfully"
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            # Auto-assign the authenticated user
+            serializer.save(user=request.user)
+            return self.success_response(
+                data=serializer.data,
+                message="Product Review Created Successfully",
+                status_code=201
+            )
+        return self.error_response(
+            message="Validation Failed",
+            errors=serializer.errors
+        )
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Check if user owns this review
+        if instance.user != request.user:
+            return self.error_response(
+                message="You can only update your own reviews",
+                status_code=403
+            )
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data=serializer.data,
+                message="Product Review Updated Successfully"
+            )
+        return self.error_response(
+            message="Validation Failed",
+            errors=serializer.errors
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Check if user owns this review
+        if instance.user != request.user:
+            return self.error_response(
+                message="You can only delete your own reviews",
+                status_code=403
+            )
+        
+        instance.delete()
+        return self.success_response(
+            status_code=204,
+            message="Product Review Deleted Successfully"
+        )
 
 """ Bulk Product Upload from Excel Section """
 class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):

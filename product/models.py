@@ -4,6 +4,8 @@ from django.utils.text import slugify
 from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.utils import timezone
+from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 """ Start of Creating Models for Product Section """
 
@@ -225,5 +227,25 @@ class ProductDescriptionRow(TimeStampedModel):
             self.display_order = last_order + 1
         super().save(*args, **kwargs)
 
+class ProductReview(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    rating = models.IntegerField(default=5, validators=[MinValueValidator(1), MaxValueValidator(5)])
+    review = models.TextField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.product.name} - {self.rating}✯"
+
+    class Meta:
+        db_table = 'product_reviews'
+        verbose_name = 'product_review'
+        verbose_name_plural = 'product_reviews'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['product', 'is_active']),
+            models.Index(fields=['user', 'is_active']),
+        ]
 
 """ End of Creating Models for Product Section """

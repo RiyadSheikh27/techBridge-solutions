@@ -232,4 +232,19 @@ class ProductDescriptionRowWriteSerializer(serializers.ModelSerializer):
         fields = ['id', 'description', 'key', 'value', 'display_order']
         read_only_fields = ['id']
 
+class ProductReviewSerializer(serializers.ModelSerializer):
+    """Serializer for product reviews"""
+    
+    class Meta:
+        model = ProductReview
+        fields = ['id', 'product', 'user', 'rating', 'review', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+class ProductReviewWriteSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating product reviews"""
+    class Meta:
+        model = ProductReview
+        fields = ['id', 'product', 'rating', 'review', 'is_active']
+        read_only_fields = ['id']
+
 """ End of Creating Serializer for Product Section """

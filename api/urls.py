@@ -13,11 +13,12 @@ router = DefaultRouter()
 """ Registered ViewSets for Product Section """
 router.register(r'products/categories', ProductCategoryViewSet, basename='category')
 router.register(r'products/subcategories', ProductSubCategoryViewSet, basename='subcategory')
+router.register(r'products/reviews', ProductReviewViewSet, basename='product-review')
+router.register(r'products/bulk-upload', BulkProductUploadViewSet, basename='product-bulk-upload')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'products-subcategory-descriptions', CategoryDescriptionViewSet, basename='subcategory-description')
 router.register(r'products-descriptions', ProductDescriptionViewSet, basename='product-description')
 router.register(r'products-description-rows', ProductDescriptionRowViewSet, basename='description-row')
-router.register(r'products/bulk-upload', BulkProductUploadViewSet, basename='product-bulk-upload')
 
 """ Registered ViewSets for Delivery Charge Section """
 router.register(r'orders', OrderViewSet, basename='order')
