@@ -11,11 +11,12 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_image = serializers.CharField(source='product.image')
     product_slug = serializers.CharField(source='product.slug')
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    msrp = serializers.DecimalField(max_digits=10, decimal_places=2, source='product.msrp', read_only=True)
 
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'cart', 'product_name', 'product_image', 'product_slug', 'quantity', 'price', 'total_price', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'price', 'created_at', 'updated_at']
+        fields = ['id', 'product', 'cart', 'product_name', 'product_image', 'product_slug', 'quantity', 'price', 'total_price', 'msrp', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'price', 'created_at', 'updated_at', 'msrp']
 
     def validate_quantity(self, value):
         if value <= 0:
@@ -33,11 +34,12 @@ class CartSerializer(serializers.ModelSerializer):
     """Serializer for Cart"""
     items = CartItemSerializer(many=True, read_only=True)
     total = serializers.SerializerMethodField()
+    delivery_charge = serializers.SerializerMethodField()
     subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = Cart
-        fields = ['id', 'user', 'items', 'subtotal', 'total', 'created_at', 'updated_at']
+        fields = ['id', 'user', 'items', 'subtotal', 'delivery_charge', 'total', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_delivery_charge(self, obj):
@@ -48,6 +50,11 @@ class CartSerializer(serializers.ModelSerializer):
         """Calculate total with delivery charge"""
         delivery = DeliveryCharge.get_current_charge()
         return str(obj.calculate_total(delivery))
+
+    def get_delivery_charge(self, obj):
+        """Get current delivery charge"""
+        return str(DeliveryCharge.get_current_charge())
+
 
 class AddToCartSerializer(serializers.Serializer):
     """Serializer for adding items to cart"""
