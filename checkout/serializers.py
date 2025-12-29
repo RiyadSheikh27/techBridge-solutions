@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import *
-from .models import CartItem, OrderItem, DeliveryCharge, Order, Cart
 from product.models import Product
 
 """ Start of Serializers for Checkout Section """

@@ -2,7 +2,7 @@ from django.db import models
 import uuid
 from decimal import Decimal
 from product.models import TimeStampedModel, Product
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
 from authentication.models import Users
 
@@ -224,3 +224,23 @@ class DeliveryCharge(TimeStampedModel):
         """Get current active delivery charge"""
         charge = cls.objects.filter(is_active=True).first()
         return charge.amount if charge else Decimal('10.00')
+
+class ProductReview(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    rating = models.IntegerField(default=5, validators=[MinValueValidator(1), MaxValueValidator(5)])
+    review = models.TextField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.product.name} - {self.rating}✯"
+
+    class Meta:
+        verbose_name = 'product_review'
+        verbose_name_plural = 'product_reviews'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['order', 'is_active']),
+            models.Index(fields=['user', 'is_active']),
+        ]
