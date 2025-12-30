@@ -98,7 +98,7 @@ class Order(TimeStampedModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order_number = models.CharField(max_length=100, unique=True, db_index=True)
-    user = models.ForeignKey(Users, on_delete=models.CASCADE, null=True, blank=True, db_index=True)
+    user = models.ForeignKey(Users, on_delete=models.SET_NULL, null=True, blank=True, db_index=True)
     
     first_name = models.CharField(max_length=255,blank=True, null=True)
     last_name = models.CharField(max_length=255,blank=True, null=True)
@@ -168,7 +168,7 @@ class Order(TimeStampedModel):
 class OrderItem(TimeStampedModel):
     """ Order Item Model """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True)
     product_name = models.CharField(max_length=255)
     product_type = models.CharField(max_length=255, null=True, blank=True)
