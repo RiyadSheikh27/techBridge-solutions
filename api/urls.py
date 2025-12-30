@@ -26,6 +26,7 @@ router.register(r'orders', OrderViewSet, basename='order')
 router.register(r'delivery-charge', DeliveryChargeViewSet, basename='delivery-charge')
 router.register(r'order-review', ProductReviewViewSet, basename='order-review')
 
+
 """ Registered ViewSets for Checkout Section """
 router.register(r'cart', CartViewSet, basename='cart')
 

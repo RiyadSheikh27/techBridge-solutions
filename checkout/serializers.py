@@ -119,6 +119,21 @@ class OrderSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
 
+class MyOrdersSerializer(serializers.ModelSerializer):
+    """Serializer for my orders"""
+    items = OrderItemSerializer(many=True, read_only=True)
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'order_number', 'subtotal', 'delivery_charge', 'total',
+            'status', 'payment_status', 'items',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'order_number', 'payment_status',
+            'created_at', 'updated_at'
+        ]
+
 class CheckoutSerializer(serializers.Serializer):
     """Serializer for checkout process"""
     first_name = serializers.CharField(max_length=255)

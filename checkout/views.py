@@ -326,7 +326,7 @@ class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             )
         
         orders = Order.objects.filter(user=request.user)
-        serializer = self.get_serializer(orders, many=True)
+        serializer = MyOrdersSerializer(orders, many=True)
 
         return self.success_response(
             message="Orders retrieved successfully",
@@ -366,6 +366,43 @@ class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
         except Exception as e:
             return self.error_response(
                 message=f"Failed to track order: {str(e)}"
+            )
+
+    @action(detail=True, methods=['delete'], url_path='admin-delete')
+    def admin_delete_order(self, request, order_number=None):
+        """Delete order (admin only)"""
+        
+        """Check if user is admin"""
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return self.error_response(
+                message="Admin access required",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            order = self.get_object()
+            success, message = order.admin_delete_order()
+            
+            if success:
+                return self.success_response(
+                    message=message,
+                    status_code=status.HTTP_200_OK
+                )
+            else:
+                return self.error_response(
+                    message=message,
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+        except Order.DoesNotExist:
+            return self.error_response(
+                message="Order not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return self.error_response(
+                message=f"Failed to delete order: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 

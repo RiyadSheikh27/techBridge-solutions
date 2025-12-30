@@ -164,6 +164,28 @@ class Order(TimeStampedModel):
     def full_name(self):
         """Get customer full name"""
         return f"{self.first_name} {self.last_name}"
+    
+    def admin_delete_order(self):
+        """
+        Delete order regardless of status.
+        This method should only be called by admin users.
+        Returns: tuple (success: bool, message: str)
+        """
+        try:
+            order_number = self.order_number
+            order_status = self.status
+            payment_status = self.payment_status
+            
+            # Delete the order and all related items (CASCADE)
+            self.delete()
+            
+            return (
+                True, 
+                f"Order {order_number} (Status: {order_status}, Payment: {payment_status}) deleted successfully"
+            )
+        except Exception as e:
+            return (False, f"Failed to delete order: {str(e)}")
+
 
 class OrderItem(TimeStampedModel):
     """ Order Item Model """
@@ -234,7 +256,7 @@ class ProductReview(TimeStampedModel):
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.product.name} - {self.rating}✯"
+        return f"{self.user.first_name} {self.user.last_name} - {self.rating}✯"
 
     class Meta:
         verbose_name = 'product_review'
