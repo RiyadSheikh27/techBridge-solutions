@@ -2,6 +2,7 @@ from rest_framework.serializers import ModelSerializer
 from rest_framework import serializers
 from .models import *
 from product.models import ProductDescription
+from checkout.models import Order, ProductReview
 
 """ Start of Creating Serializer for Product Section """
 class ProductDescriptionRowSerializer(serializers.ModelSerializer):
@@ -47,17 +48,18 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     subcategory_name = serializers.CharField(source='subcategory.name', read_only=True)
     category_name = serializers.CharField(source='subcategory.category.name', read_only=True)
     product_type = serializers.CharField(source='subcategory.category.product_type', read_only=True)
+    subcategory_slug = serializers.CharField(source='subcategory.slug', read_only=True)
     
     class Meta:
         model = Product
         fields = [
             'id', 'subcategory', 'subcategory_name', 'category_name',
-            'product_type', 'name', 'slug', 'series', 'image',
+            'product_type', 'name', 'slug', 'subcategory_slug', 'series', 'image',
             'msrp', 'price', 'stock', 'is_in_stock',
             'mfr_part', 'shi_part', 'unspsc', 'manufacturer',
             'description', 'is_active', 'is_featured',
             'display_order', 'overview', 'descriptions',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at', 
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
 
@@ -234,17 +236,18 @@ class ProductDescriptionRowWriteSerializer(serializers.ModelSerializer):
 
 class ProductReviewSerializer(serializers.ModelSerializer):
     """Serializer for product reviews"""
-    
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    user_profile = serializers.CharField(source='user.image', read_only=True)
     class Meta:
         model = ProductReview
-        fields = ['id', 'product', 'user', 'rating', 'review', 'is_active', 'created_at', 'updated_at']
+        fields = ['id', 'order', 'user', 'user_name', 'user_profile', 'rating', 'review', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ProductReviewWriteSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating product reviews"""
     class Meta:
         model = ProductReview
-        fields = ['id', 'product', 'rating', 'review', 'is_active']
+        fields = ['id', 'order', 'rating', 'review', 'is_active']
         read_only_fields = ['id']
 
 """ End of Creating Serializer for Product Section """
