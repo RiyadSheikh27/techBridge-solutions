@@ -1,6 +1,6 @@
 import openpyxl
 import uuid
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render
 from rest_framework import viewsets
 from .models import *
 from .serializers import *
@@ -13,11 +13,6 @@ from io import BytesIO
 from django.core.cache import cache
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
-<<<<<<< HEAD
-=======
-from authentication.permissions import IsOwnerOrReadOnly
-from checkout.models import Order, ProductReview
->>>>>>> 6c06ea198ea6410a660523b13b71c24364c1eacd
 
 """ Start of Creating Views for Product Section """
 
@@ -609,92 +604,6 @@ class ProductDescriptionRowViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             message="Product Description Row Deleted Successfully"
         )
 
-class ProductReviewViewSet(CustomResponseMixin, viewsets.ModelViewSet):
-    """ViewSet for Product Reviews"""
-    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
-    lookup_field = 'id'
-
-    def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return ProductReviewWriteSerializer
-        return ProductReviewSerializer
-
-    def get_queryset(self):
-        queryset = ProductReview.objects.select_related('order', 'user')[:10]
-        
-        """ Filter by Order"""
-        order_id = self.request.query_params.get('order')
-        if order_id:
-            get_object_or_404(Order, id=order_id)
-            queryset = queryset.filter(order_id=order_id)
-        
-        """ Filter by user for their own reviews"""
-        user_id = self.request.query_params.get('user')
-        if user_id:
-            queryset = queryset.filter(user_id=user_id)
-            
-        return queryset
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return self.success_response(
-            data=serializer.data,
-            message="Product reviews retrieved successf ully"
-        )
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            """Auto-assign the authenticated user"""
-            serializer.save(user=request.user)
-            return self.success_response(
-                data=serializer.data,
-                message="Product Review Created Successfully",
-                status_code=201
-            )
-        return self.error_response(
-            message="Validation Failed",
-            errors=serializer.errors
-        )
-
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        
-        """ Check if user owns this review"""
-        if instance.user != request.user:
-            return self.error_response(
-                message="You can only update your own reviews",
-                status_code=403
-            )
-        
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return self.success_response(
-                data=serializer.data,
-                message="Product Review Updated Successfully"
-            )
-        return self.error_response(
-            message="Validation Failed",
-            errors=serializer.errors
-        )
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        
-        """ Check if user owns this review"""
-        if instance.user != request.user and request.user.role != 'admin':
-            return self.error_response(
-                message="You can only delete your own reviews",
-                status_code=403
-            )
-        
-        instance.delete()
-        return self.success_response(
-            status_code=204,
-            message="Product Review Deleted Successfully"
-        )
 
 """ Bulk Product Upload from Excel Section """
 class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
@@ -752,22 +661,14 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
                 'is_active': self._safe_bool(row[11].value, False),  # Column L
                 'is_featured': self._safe_bool(row[12].value, False),  # Column M
                 'display_order': self._safe_int(row[13].value, 0),  # Column N
-<<<<<<< HEAD
-=======
-                'image': str(row[14].value or '').strip() if row[14].value else None,  # Column O
->>>>>>> 6c06ea198ea6410a660523b13b71c24364c1eacd
                 'valid': True,
                 'errors': []
             }
             
-<<<<<<< HEAD
             # Validate required fields
-=======
-            """ Validate required fields"""
->>>>>>> 6c06ea198ea6410a660523b13b71c24364c1eacd
             if not product_data['name']:
                 product_data['valid'] = False
-                product_data['errors'].append('Product Name is required')
+                product_data['errors'].append('Name is required')
 
             if Decimal(product_data['msrp']) <= 0:
                 product_data['valid'] = False
@@ -775,15 +676,11 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
 
             if Decimal(product_data['price']) <= 0:
                 product_data['valid'] = False
-<<<<<<< HEAD
                 product_data['errors'].append('Price must be greater than 0')
-=======
-                product_data['errors'].append('Product Price must be greater than 0')
->>>>>>> 6c06ea198ea6410a660523b13b71c24364c1eacd
 
             if not product_data['description']:
                 product_data['valid'] = False
-                product_data['errors'].append('Product Description is required')
+                product_data['errors'].append('Description is required')
 
             return product_data
 
