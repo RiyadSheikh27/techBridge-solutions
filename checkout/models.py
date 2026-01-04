@@ -2,7 +2,7 @@ from django.db import models
 import uuid
 from decimal import Decimal
 from product.models import TimeStampedModel, Product
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.validators import MinValueValidator
 from django.conf import settings
 from authentication.models import Users
 
@@ -98,7 +98,7 @@ class Order(TimeStampedModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order_number = models.CharField(max_length=100, unique=True, db_index=True)
-    user = models.ForeignKey(Users, on_delete=models.SET_NULL, null=True, blank=True, db_index=True)
+    user = models.ForeignKey(Users, on_delete=models.CASCADE, null=True, blank=True, db_index=True)
     
     first_name = models.CharField(max_length=255,blank=True, null=True)
     last_name = models.CharField(max_length=255,blank=True, null=True)
@@ -164,33 +164,11 @@ class Order(TimeStampedModel):
     def full_name(self):
         """Get customer full name"""
         return f"{self.first_name} {self.last_name}"
-    
-    def admin_delete_order(self):
-        """
-        Delete order regardless of status.
-        This method should only be called by admin users.
-        Returns: tuple (success: bool, message: str)
-        """
-        try:
-            order_number = self.order_number
-            order_status = self.status
-            payment_status = self.payment_status
-            
-            # Delete the order and all related items (CASCADE)
-            self.delete()
-            
-            return (
-                True, 
-                f"Order {order_number} (Status: {order_status}, Payment: {payment_status}) deleted successfully"
-            )
-        except Exception as e:
-            return (False, f"Failed to delete order: {str(e)}")
-
 
 class OrderItem(TimeStampedModel):
     """ Order Item Model """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='items')
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True)
     product_name = models.CharField(max_length=255)
     product_type = models.CharField(max_length=255, null=True, blank=True)
@@ -246,23 +224,3 @@ class DeliveryCharge(TimeStampedModel):
         """Get current active delivery charge"""
         charge = cls.objects.filter(is_active=True).first()
         return charge.amount if charge else Decimal('10.00')
-
-class ProductReview(TimeStampedModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(Order, on_delete=models.CASCADE)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    rating = models.IntegerField(default=5, validators=[MinValueValidator(1), MaxValueValidator(5)])
-    review = models.TextField()
-    is_active = models.BooleanField(default=True)
-
-    def __str__(self):
-        return f"{self.user.first_name} {self.user.last_name} - {self.rating}✯"
-
-    class Meta:
-        verbose_name = 'product_review'
-        verbose_name_plural = 'product_reviews'
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['order', 'is_active']),
-            models.Index(fields=['user', 'is_active']),
-        ]

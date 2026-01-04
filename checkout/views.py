@@ -9,13 +9,8 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, I
 from product.models import Product
 from authentication.permissions import IsAdmin, IsAdminOrReadOnly
 from django.db import transaction
-from django.contrib.auth import get_user_model
-from django.db.models import Sum
-from decimal import Decimal
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-
-User = get_user_model()
 
 """ Start of Views for Checkout Section """
 
@@ -232,42 +227,28 @@ class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-    
-        """Statistics"""
-        total_revenue = (
-            Order.objects
-            .filter(payment_status='completed')
-            .aggregate(total_revenue=Sum('total'))['total_revenue']
-            or Decimal('0.00')
-        )
-        total_orders = Order.objects.filter(payment_status='completed').count()
-        total_active_users = User.objects.filter(is_active=True).count()
-        total_products = Product.objects.count()
-    
-        statistics = {
-            'total_revenue': total_revenue,
-            'total_completed_orders': total_orders,
-            'total_active_users': total_active_users,
-            'total_products': total_products,
-        }
-    
+
+        """pagination"""
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            response = self.get_paginated_response(serializer.data)
-            
-            """inject statistics"""
-            response.data['statistics'] = statistics
-            return response
-    
+            return self.get_paginated_response(serializer.data)
+        
         serializer = self.get_serializer(queryset, many=True)
-    
+        
         return self.success_response(
-            statistics=statistics,
             data=serializer.data,
             message="Orders retrieved successfully"
         )
     
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Order retrieved successfully"
+        )
 
     @action(detail=True, methods=['patch'])
     def update_status(self, request, order_number=None):
@@ -326,7 +307,7 @@ class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             )
         
         orders = Order.objects.filter(user=request.user)
-        serializer = MyOrdersSerializer(orders, many=True)
+        serializer = self.get_serializer(orders, many=True)
 
         return self.success_response(
             message="Orders retrieved successfully",
@@ -366,43 +347,6 @@ class OrderViewSet(CustomResponseMixin, viewsets.ModelViewSet):
         except Exception as e:
             return self.error_response(
                 message=f"Failed to track order: {str(e)}"
-            )
-
-    @action(detail=True, methods=['delete'], url_path='admin-delete')
-    def admin_delete_order(self, request, order_number=None):
-        """Delete order (admin only)"""
-        
-        """Check if user is admin"""
-        if not request.user.is_authenticated or not request.user.is_staff:
-            return self.error_response(
-                message="Admin access required",
-                status_code=status.HTTP_403_FORBIDDEN
-            )
-        
-        try:
-            order = self.get_object()
-            success, message = order.admin_delete_order()
-            
-            if success:
-                return self.success_response(
-                    message=message,
-                    status_code=status.HTTP_200_OK
-                )
-            else:
-                return self.error_response(
-                    message=message,
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-                
-        except Order.DoesNotExist:
-            return self.error_response(
-                message="Order not found",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return self.error_response(
-                message=f"Failed to delete order: {str(e)}",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 

@@ -6,7 +6,6 @@ from rest_framework import routers
 from django.contrib import admin
 from .swagger import schema_view
 from checkout.views import *
-from sitesettings.views import *    
 
 
 router = DefaultRouter()
@@ -14,25 +13,18 @@ router = DefaultRouter()
 """ Registered ViewSets for Product Section """
 router.register(r'products/categories', ProductCategoryViewSet, basename='category')
 router.register(r'products/subcategories', ProductSubCategoryViewSet, basename='subcategory')
-router.register(r'products/reviews', ProductReviewViewSet, basename='product-review')
-router.register(r'products/bulk-upload', BulkProductUploadViewSet, basename='product-bulk-upload')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'products-subcategory-descriptions', CategoryDescriptionViewSet, basename='subcategory-description')
 router.register(r'products-descriptions', ProductDescriptionViewSet, basename='product-description')
 router.register(r'products-description-rows', ProductDescriptionRowViewSet, basename='description-row')
+router.register(r'products/bulk-upload', BulkProductUploadViewSet, basename='product-bulk-upload')
 
 """ Registered ViewSets for Delivery Charge Section """
 router.register(r'orders', OrderViewSet, basename='order')
 router.register(r'delivery-charge', DeliveryChargeViewSet, basename='delivery-charge')
-router.register(r'order-review', ProductReviewViewSet, basename='order-review')
-
 
 """ Registered ViewSets for Checkout Section """
 router.register(r'cart', CartViewSet, basename='cart')
-
-""" Registered ViewSets for SiteSettings Section """
-router.register(r'contant-info', ContantInfoViewSet, basename='contant-info')
-router.register(r'request-quote', RequestQuoteViewSet, basename='request-quote')
 
 
 urlpatterns = [
