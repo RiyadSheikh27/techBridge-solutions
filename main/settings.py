@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'product',
     'api',
     'checkout',
+    'sitesettings',
 ]
 
 MIDDLEWARE = [
@@ -53,6 +54,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'main.urls'
 AUTH_USER_MODEL = 'authentication.Users'
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://austin-ovisaclike-nonoptically.ngrok-free.dev",
+]
+
 
 TEMPLATES = [
     {
@@ -126,7 +132,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20
+    'PAGE_SIZE': 10
 }
 
 SIMPLE_JWT = {
