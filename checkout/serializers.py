@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import *
-from .models import CartItem, OrderItem, DeliveryCharge, Order, Cart
 from product.models import Product
 
 """ Start of Serializers for Checkout Section """
@@ -112,6 +111,21 @@ class OrderSerializer(serializers.ModelSerializer):
             'id', 'order_number', 'first_name', 'last_name',
             'full_name', 'company_name', 'email', 'phone', 
             'address', 'subtotal', 'delivery_charge', 'total',
+            'status', 'payment_status', 'items',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'order_number', 'payment_status',
+            'created_at', 'updated_at'
+        ]
+
+class MyOrdersSerializer(serializers.ModelSerializer):
+    """Serializer for my orders"""
+    items = OrderItemSerializer(many=True, read_only=True)
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'order_number', 'subtotal', 'delivery_charge', 'total',
             'status', 'payment_status', 'items',
             'created_at', 'updated_at'
         ]

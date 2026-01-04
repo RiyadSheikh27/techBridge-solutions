@@ -4,6 +4,8 @@ from django.utils.text import slugify
 from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.utils import timezone
+from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 """ Start of Creating Models for Product Section """
 
