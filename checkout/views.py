@@ -661,6 +661,10 @@ class DeliveryChargeViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             message="Delivery charge updated successfully"
         )
 
+    def partial_update(self, request, *args, **kwargs):
+        """Partial Update Delivery Charge"""
+        
+
     def destroy(self, request, *args, **kwargs):
         """ Delete Delivery Charge"""
         self.perform_destroy(self.get_object())
