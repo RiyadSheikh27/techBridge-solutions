@@ -693,6 +693,291 @@ class ProductReviewViewSet(CustomResponseMixin, viewsets.ModelViewSet):
             message="Product Review Deleted Successfully"
         )
 
+# """ Bulk Product Upload from Excel Section """
+# class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
+#     """ViewSet for Bulk Product Upload from Excel"""
+#     permission_classes = [IsAdminUser]
+    
+#     def _safe_decimal(self, value, default='0.00'):
+#         """Safe Decimal Conversion"""
+#         if value is None or value == '':
+#             return Decimal(default)
+#         try:
+#             return Decimal(str(value))
+#         except (ValueError, InvalidOperation):
+#             return Decimal(default)
+
+#     def _safe_int(self, value, default=0):
+#         """Safely convert value to integer"""
+#         if value is None or value == '':
+#             return default
+#         try:
+#             return int(value)
+#         except (ValueError, TypeError):
+#             return default
+    
+#     def _safe_bool(self, value, default=True):
+#         """Safely convert value to boolean"""
+#         if value is None or value == '':
+#             return default
+#         if isinstance(value, bool):
+#             return value
+#         if isinstance(value, str):
+#             return value.lower() in ['true', 'yes', '1', 'y']
+#         return bool(value)
+
+#     def _parse_excel_row(self, row, subcategory_id, row_number):
+#         """Parse a single row from the Excel file"""
+#         try:
+#             temp_id = str(uuid.uuid4())
+
+#             product_data = {
+#                 'id': temp_id,
+#                 'row_number': row_number,
+#                 'subcategory': subcategory_id,
+#                 'name': str(row[0].value or '').strip(),  # Column A
+#                 'series': str(row[1].value or '').strip() if row[1].value else None,  # Column B
+#                 'msrp': str(self._safe_decimal(row[2].value, '0.00')),  # Column C
+#                 'price': str(self._safe_decimal(row[3].value, '0.00')),  # Column D
+#                 'stock': self._safe_int(row[4].value, 100),  # Column E
+#                 'is_in_stock': self._safe_bool(row[5].value, True),  # Column F
+#                 'mfr_part': str(row[6].value or '').strip() if row[6].value else None,  # Column G
+#                 'shi_part': str(row[7].value or '').strip() if row[7].value else None,  # Column H
+#                 'unspsc': str(row[8].value or '').strip() if row[8].value else None,  # Column I
+#                 'manufacturer': str(row[9].value or '').strip() if row[9].value else None,  # Column J
+#                 'description': str(row[10].value or '').strip(),  # Column K
+#                 'is_active': self._safe_bool(row[11].value, False),  # Column L
+#                 'is_featured': self._safe_bool(row[12].value, False),  # Column M
+#                 'display_order': self._safe_int(row[13].value, 0),  # Column N
+#                 'image': str(row[14].value or '').strip() if row[14].value else None,  # Column O
+#                 'valid': True,
+#                 'errors': []
+#             }
+            
+#             """ Validate required fields"""
+#             if not product_data['name']:
+#                 product_data['valid'] = False
+#                 product_data['errors'].append('Product Name is required')
+
+#             if Decimal(product_data['msrp']) <= 0:
+#                 product_data['valid'] = False
+#                 product_data['errors'].append('MSRP must be greater than 0')
+
+#             if Decimal(product_data['price']) <= 0:
+#                 product_data['valid'] = False
+#                 product_data['errors'].append('Product Price must be greater than 0')
+
+#             if not product_data['description']:
+#                 product_data['valid'] = False
+#                 product_data['errors'].append('Product Description is required')
+
+#             return product_data
+
+#         except Exception as e:
+#             return {
+#                 'id': str(uuid.uuid4()),
+#                 'row_number': row_number,
+#                 'valid': False,
+#                 'errors': [f'Error parsing row: {str(e)}'],
+#                 'name': 'Error'
+#             }
+    
+#     @action(detail=False, methods=['post'])
+#     def upload_excel(self, request):
+#         """
+#         Upload Excel file and get parsed products with unique IDs
+#         Expected request:
+#         - subcategory (UUID): Subcategory ID
+#         - file (File): Excel file
+#         """
+#         subcategory_id = request.data.get('subcategory')
+#         excel_file = request.data.get('file')
+
+#         if not subcategory_id:
+#             return self.error_response(
+#                 message="Subcategory ID is required"
+#             )
+        
+#         if not excel_file:
+#             return self.error_response(
+#                 message="Excel file is required"
+#             )
+#         """Validate Subcategory exists"""
+#         try:
+#             subcategory = ProductSubCategory.objects.get(id=subcategory_id)
+#         except ProductSubCategory.DoesNotExist:
+#             return self.error_response(
+#                 message="Subcategory does not exist",
+#                 status_code=status.HTTP_404_NOT_FOUND
+#             )
+#         try:
+#             """Read Excel file"""
+#             workbook = openpyxl.load_workbook(BytesIO(excel_file.read()))
+#             sheet = workbook.active
+            
+#             """Parse products (skip header row)"""
+#             products = []
+#             for idx, row in enumerate(sheet.iter_rows(min_row=2), start=2):
+#                 """Skip empty rows"""
+#                 if not any(cell.value for cell in row):
+#                     continue
+                
+#                 product_data = self._parse_excel_row(row, subcategory_id, idx)
+#                 products.append(product_data)
+            
+#             if not products:
+#                 return self.error_response(
+#                     message="No valid products found in Excel file"
+#                 )
+
+#             """ Store Products in Cache for Later Retrieval (30 minutes)"""
+#             cache_key = f"bulk_upload_{request.user.id}_{uuid.uuid4()}"
+#             cache.set(cache_key, products, timeout=1800)
+
+#             """Summary"""
+#             valid_count = sum(1 for p in products if p['valid'])
+#             invalid_count = len(products) - valid_count
+
+#             return self.success_response(
+#                 data={
+#                     'cache_key': cache_key,
+#                     'subcategory': {
+#                         'id': str(subcategory.id),
+#                         'name': subcategory.name,
+#                         'category_name': subcategory.category.name
+#                     },
+#                     'products': products,
+#                     'summary': {
+#                         'total': len(products),
+#                         'valid': valid_count,
+#                         'invalid': invalid_count
+#                     }
+#                 },
+#                 message=f"Excel parsed successfully. {valid_count} valid products found."
+#             )
+            
+#         except openpyxl.utils.exceptions.InvalidFileException:
+#             return self.error_response(
+#                 message="Invalid Excel file format. Please upload a valid .xlsx file"
+#             )
+#         except Exception as e:
+#             return self.error_response(
+#                 message=f"Failed to parse Excel file: {str(e)}"
+#             )
+    
+#     @action(detail=False, methods=['post'])
+#     def save_selected(self, request):
+#         """
+#         Step 2: Save selected products to database
+        
+#         Expected request:
+#         - cache_key (string): Cache key from upload_excel response
+#         - selected_ids (List): List of product IDs to create
+#         """
+#         cache_key = request.data.get('cache_key')
+#         selected_ids = request.data.get('selected_ids', [])
+        
+#         if not cache_key:
+#             return self.error_response(
+#                 message="Cache key is required"
+#             )
+        
+#         if not selected_ids or not isinstance(selected_ids, list):
+#             return self.error_response(
+#                 message="Selected IDs must be a non-empty list"
+#             )
+        
+#         """Retrieve products from cache"""
+#         cached_products = cache.get(cache_key)
+#         if not cached_products:
+#             return self.error_response(
+#                 message="Upload session expired or not found. Please upload Excel again.",
+#                 status_code=status.HTTP_404_NOT_FOUND
+#             )
+        
+#         """Filter selected products"""
+#         products_to_create = [
+#             p for p in cached_products 
+#             if p['id'] in selected_ids and p['valid']
+#         ]
+        
+#         if not products_to_create:
+#             return self.error_response(
+#                 message="No valid products selected"
+#             )
+        
+#         created_products = []
+#         errors = []
+        
+#         try:
+#             with transaction.atomic():
+#                 for product_data in products_to_create:
+#                     try:
+#                         """Remove temporary fields"""
+#                         temp_id = product_data['id']
+#                         product_data.pop('id', None)
+#                         product_data.pop('row_number', None)
+#                         product_data.pop('valid', None)
+#                         product_data.pop('errors', None)
+                        
+#                         """Convert string decimals to Decimal"""
+#                         product_data['msrp'] = Decimal(product_data['msrp'])
+#                         product_data['price'] = Decimal(product_data['price'])
+                        
+#                         """Get subcategory"""
+#                         subcategory = ProductSubCategory.objects.get(
+#                             id=product_data['subcategory']
+#                         )
+#                         product_data['subcategory'] = subcategory
+                        
+#                         """Create product"""
+#                         product = Product.objects.create(**product_data)
+#                         created_products.append(product)
+                        
+#                     except ProductSubCategory.DoesNotExist:
+#                         errors.append({
+#                             'temp_id': temp_id,
+#                             'name': product_data.get('name', 'Unknown'),
+#                             'error': 'Subcategory not found'
+#                         })
+#                     except Exception as e:
+#                         errors.append({
+#                             'temp_id': temp_id,
+#                             'name': product_data.get('name', 'Unknown'),
+#                             'error': str(e)
+#                         })
+                
+#                 """If any errors occurred, rollback transaction"""
+#                 if errors:
+#                     raise Exception("Some products failed to create")
+            
+#             """Clear cache after successful creation"""
+#             cache.delete(cache_key)
+            
+#             """Serialize created products"""
+#             serializer = ProductDetailSerializer(created_products, many=True)
+            
+#             return self.success_response(
+#                 data={
+#                     'created_products': serializer.data,
+#                     'summary': {
+#                         'total_selected': len(selected_ids),
+#                         'successfully_created': len(created_products),
+#                         'failed': len(errors)
+#                     },
+#                     'errors': errors if errors else None
+#                 },
+#                 message=f"Successfully created {len(created_products)} products",
+#                 status_code=status.HTTP_201_CREATED
+#             )
+            
+#         except Exception as e:
+#             return self.error_response(
+#                 message=f"Failed to create products: {str(e)}",
+#                 errors=errors if errors else None
+#             )
+
+# """ End ofBulk Product Upload from Excel Section """
 """ Bulk Product Upload from Excel Section """
 class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
     """ViewSet for Bulk Product Upload from Excel"""
@@ -725,11 +1010,47 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
         if isinstance(value, str):
             return value.lower() in ['true', 'yes', '1', 'y']
         return bool(value)
+    
+    def _convert_drive_link_to_direct(self, drive_url):
+        """
+        Convert Google Drive sharing link to direct viewable link
+        Input: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+        Output: https://drive.google.com/uc?id=FILE_ID
+        """
+        if not drive_url or not isinstance(drive_url, str):
+            return None
+        
+        drive_url = drive_url.strip()
+        
+        # Check if it's a Google Drive link
+        if 'drive.google.com' not in drive_url:
+            return drive_url  # Return as-is if not a Drive link
+        
+        try:
+            # Extract file ID from various Drive URL formats
+            if '/file/d/' in drive_url:
+                file_id = drive_url.split('/file/d/')[1].split('/')[0].split('?')[0]
+            elif 'id=' in drive_url:
+                file_id = drive_url.split('id=')[1].split('&')[0]
+            else:
+                return drive_url  # Can't parse, return original
+            
+            # Return direct viewable link
+            return f'https://drive.google.com/uc?id={file_id}'
+        
+        except Exception as e:
+            print(f"Error converting Drive link: {str(e)}")
+            return drive_url  # Return original on error
 
     def _parse_excel_row(self, row, subcategory_id, row_number):
         """Parse a single row from the Excel file"""
         try:
             temp_id = str(uuid.uuid4())
+            
+            # Get image URL from Column O and convert if it's a Drive link
+            image_url = str(row[14].value or '').strip() if row[14].value else None
+            if image_url:
+                image_url = self._convert_drive_link_to_direct(image_url)
 
             product_data = {
                 'id': temp_id,
@@ -749,7 +1070,7 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
                 'is_active': self._safe_bool(row[11].value, False),  # Column L
                 'is_featured': self._safe_bool(row[12].value, False),  # Column M
                 'display_order': self._safe_int(row[13].value, 0),  # Column N
-                'image': str(row[14].value or '').strip() if row[14].value else None,  # Column O
+                'image': image_url,  # Column O - Direct Drive link or regular URL
                 'valid': True,
                 'errors': []
             }
@@ -789,6 +1110,11 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
         Expected request:
         - subcategory (UUID): Subcategory ID
         - file (File): Excel file
+        
+        Image Column (Column O):
+        - Can be Google Drive sharing link (will be auto-converted to direct link)
+        - Can be any direct image URL
+        - Will be stored as-is in database (not downloaded to media folder)
         """
         subcategory_id = request.data.get('subcategory')
         excel_file = request.data.get('file')
@@ -930,7 +1256,7 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
                         )
                         product_data['subcategory'] = subcategory
                         
-                        """Create product"""
+                        """Create product - image will be saved as Drive link directly"""
                         product = Product.objects.create(**product_data)
                         created_products.append(product)
                         
@@ -977,6 +1303,6 @@ class BulkProductUploadViewSet(CustomResponseMixin, viewsets.ViewSet):
                 errors=errors if errors else None
             )
 
-""" End ofBulk Product Upload from Excel Section """
+""" End of Bulk Product Upload from Excel Section """
 
 """ End of Creating Views for Product Section """
