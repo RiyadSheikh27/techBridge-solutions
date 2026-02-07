@@ -93,9 +93,7 @@ class RequestQuoteViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-
-        self._send_admin_notification(serializer.data)
-
+    
         return Response({
             "success": True,
             "message": "Request quote created successfully",
@@ -122,37 +120,37 @@ class RequestQuoteViewSet(viewsets.ModelViewSet):
             "message": "Request quote deleted successfully"
         }, status=status.HTTP_200_OK)
 
-def _send_admin_notification(self, data):
-    subject = "New Quote Request Received"
+# def _send_admin_notification(self, data):
+#     subject = "New Quote Request Received"
 
-    text_message = f"""
-New Quote Request
+#     text_message = f"""
+# New Quote Request
 
-Name: {data['firstName']} {data['lastName']}
-Email: {data['email']}
-Phone: {data['phone']}
-Company: {data['companyName']}
-Interest: {data['interest']}
-Description: {data['description']}
-"""
+# Name: {data['firstName']} {data['lastName']}
+# Email: {data['email']}
+# Phone: {data['phone']}
+# Company: {data['companyName']}
+# Interest: {data['interest']}
+# Description: {data['description']}
+# """
 
-    html_message = f"""
-    <h2>New Quote Request</h2>
-    <p><strong>Name:</strong> {data['firstName']} {data['lastName']}</p>
-    <p><strong>Email:</strong> {data['email']}</p>
-    <p><strong>Phone:</strong> {data['phone']}</p>
-    <p><strong>Company:</strong> {data['companyName']}</p>
-    <p><strong>Interest:</strong> {data['interest']}</p>
-    <p><strong>Description:</strong> {data['description']}</p>
-    """
+#     html_message = f"""
+#     <h2>New Quote Request</h2>
+#     <p><strong>Name:</strong> {data['firstName']} {data['lastName']}</p>
+#     <p><strong>Email:</strong> {data['email']}</p>
+#     <p><strong>Phone:</strong> {data['phone']}</p>
+#     <p><strong>Company:</strong> {data['companyName']}</p>
+#     <p><strong>Interest:</strong> {data['interest']}</p>
+#     <p><strong>Description:</strong> {data['description']}</p>
+#     """
 
-    email = EmailMultiAlternatives(
-        subject=subject,
-        body=text_message,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[settings.ADMIN_EMAIL],
-        reply_to=[data['email']], 
-    )
+#     email = EmailMultiAlternatives(
+#         subject=subject,
+#         body=text_message,
+#         from_email=settings.DEFAULT_FROM_EMAIL,
+#         to=[settings.ADMIN_EMAIL],
+#         reply_to=[data['email']], 
+#     )
 
-    email.attach_alternative(html_message, "text/html")
-    email.send(fail_silently=False)
+#     email.attach_alternative(html_message, "text/html")
+#     email.send(fail_silently=False)
