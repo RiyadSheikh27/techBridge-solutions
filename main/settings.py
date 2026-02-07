@@ -16,7 +16,11 @@ ALLOWED_HOSTS = ["*"]
 
 CORS_ALLOWED_ORIGIN = [
     "http://localhost:5174/",
-    "http://localhost:5173/"
+    "http://localhost:5173/",
+    "https://universal-teck.com/",
+    "https://backend.universal-teck.com/"
+    "https://universal-teck.com/",
+    "https://backend-universal-tech.com/"
 ]
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
@@ -57,6 +61,10 @@ AUTH_USER_MODEL = 'authentication.Users'
 
 CSRF_TRUSTED_ORIGINS = [
     "https://austin-ovisaclike-nonoptically.ngrok-free.dev",
+    "https://universal-teck.com/",
+    "https://backend.universal-teck.com/",
+    "https://universal-teck.com/",
+    "https://backend-universal-tech.com/"
 ]
 
 
