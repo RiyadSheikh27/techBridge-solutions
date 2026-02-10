@@ -36,7 +36,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'slug', 'series', 'image', 'msrp', 'price', 'stock', 'is_in_stock', 'manufacturer', 'mfr_part', 'shi_part', 'unspsc', 'description', 'is_active', 'is_featured', 'subcategory_name', 'category_name', 'product_type'
+            'id', 'name', 'slug', 'series', 'image','image_url', 'msrp', 'price', 'stock', 'is_in_stock', 'manufacturer', 'mfr_part', 'shi_part', 'unspsc', 'description', 'is_active', 'is_featured', 'subcategory_name', 'category_name', 'product_type'
         ]
 
 class ProductDetailSerializer(serializers.ModelSerializer):
@@ -52,7 +52,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'subcategory', 'subcategory_name', 'category_name',
-            'product_type', 'name', 'slug', 'subcategory_slug', 'series', 'image',
+            'product_type', 'name', 'slug', 'subcategory_slug', 'series', 'image','image_url',
             'msrp', 'price', 'stock', 'is_in_stock',
             'mfr_part', 'shi_part', 'unspsc', 'manufacturer',
             'description', 'is_active', 'is_featured',
@@ -198,7 +198,7 @@ class ProductWriteSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'subcategory', 'name', 'series',
-            'image', 'msrp', 'price', 'stock', 'is_in_stock',
+            'image', 'image_url','msrp', 'price', 'stock', 'is_in_stock',
             'mfr_part', 'shi_part', 'unspsc', 'manufacturer',
             'description', 'is_active', 'is_featured', 'display_order'
         ]

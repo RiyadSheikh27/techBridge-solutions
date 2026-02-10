@@ -128,6 +128,7 @@ class Product(TimeStampedModel):
     slug = models.CharField(max_length=255, unique=True, blank=True, null=True)
     series = models.CharField(max_length=255, blank=True, null=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
+    image_url = models.URLField(max_length=500, blank=True, null=True)
     msrp = models.DecimalField(max_digits=10, decimal_places=2, help_text="Main Price")
     price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Price after discount")
     stock = models.IntegerField(default=100)
