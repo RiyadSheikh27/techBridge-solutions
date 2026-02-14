@@ -29,7 +29,7 @@ class RequestQuote(TimeStampedModel):
     email = models.EmailField()
     phone = models.CharField(max_length=20)
     companyName = models.CharField(max_length=255)
-    interest = models.CharField(max_length=255)
+    interest = models.CharField(max_length=1000)
     description = models.TextField()
 
     def __str__(self):
