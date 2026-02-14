@@ -7,14 +7,15 @@ from product.models import Product
 class CartItemSerializer(serializers.ModelSerializer):
     """Serializer for Cart Item"""
     product_name = serializers.CharField(source='product.name')
-    product_image = serializers.CharField(source='product.image')
+    product_image = serializers.ImageField(source='product.image')
+    product_image_url = serializers.URLField(source='product.image_url')
     product_slug = serializers.CharField(source='product.slug')
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     msrp = serializers.DecimalField(max_digits=10, decimal_places=2, source='product.msrp', read_only=True)
 
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'cart', 'product_name', 'product_image', 'product_slug', 'quantity', 'price', 'total_price', 'msrp', 'created_at', 'updated_at']
+        fields = ['id', 'product', 'cart', 'product_name', 'product_image', 'product_image_url', 'product_slug', 'quantity', 'price', 'total_price', 'msrp', 'created_at', 'updated_at']
         read_only_fields = ['id', 'price', 'created_at', 'updated_at', 'msrp']
 
     def validate_quantity(self, value):
