@@ -141,7 +141,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10
+    'PAGE_SIZE': 20
 }
 
 SIMPLE_JWT = {
@@ -157,6 +157,7 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER') 
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL') 
 
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
 
